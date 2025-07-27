@@ -1,0 +1,26 @@
+
+version: "3.8"
+services:
+  server:
+    image: legiahoangthien/webtravel-backend:latest
+    restart: always
+    environment:
+      - JWT_SECRET=4d1620c0-0207-420d-beac-df2a5602066d
+      - JWT_ACCESS_TOKEN_EXPIRATION=10d
+      - MONGO_URL=mongodb+srv://root:123@travelweb.9pr59mm.mongodb.net/travelweb?retryWrites=true&w=majority
+      - URL_FRONTEND=http://localhost:3000
+      - URL_BACKEND=http://travel-backend.local
+      - PORT=4000
+      - TOGETHER_API_KEY=b549d855ea87cbc69c57fb29c6378f5e2df70770fd553cc5b3a8549656f5e2bb
+    ports:
+      - "4000:4000"
+  client:
+    image: legiahoangthien/webtravel-frontend:latest
+    restart: always  # Chế độ khởi động lại container tự động nếu có lỗi
+    environment:
+      - NEXT_PUBLIC_API_URL=http://travel-backend.local
+      - HOST=localhost
+    ports:
+      - "3000:3000"
+    depends_on:
+      - server
