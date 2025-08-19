@@ -91,7 +91,7 @@ export class ToursController {
       throw new Error('No file uploaded');
     }
     // Return absolute url for client
-    const imageUrl = `${process.env.HOST_URL || 'http://travel-backend.local'}/uploads/images-tour/${file.filename}`;
+    const imageUrl = `${process.env.HOST_URL || 'http://localhost:4000'}/uploads/images-tour/${file.filename}`;
     const updated = await this.toursService.update(id, { image: imageUrl });
     return { url: imageUrl, ...updated };
   }

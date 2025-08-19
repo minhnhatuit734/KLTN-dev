@@ -49,7 +49,7 @@ export class UsersController {
     @UploadedFile() file: Express.Multer.File,
   ) {
     // trả về link đầy đủ, tuyệt đối
-    const avatarUrl = `http://travel-backend.local/uploads/avatars/${file.filename}`;
+    const avatarUrl = `http://localhost:4000/uploads/avatars/${file.filename}`;
 
     const updated = await this.usersService.update(id, { avatar: avatarUrl });
     return updated;

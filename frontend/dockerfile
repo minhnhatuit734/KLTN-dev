@@ -29,7 +29,7 @@ COPY --from=build --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=build --chown=nextjs:nodejs /app/.next/static ./.next/static
 
 
-ENV NEXT_PUBLIC_API_URL=http://travel-backend.local
+ENV NEXT_PUBLIC_API_URL=http://localhost:4000
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 

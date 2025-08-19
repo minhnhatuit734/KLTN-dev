@@ -24,7 +24,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 
-const BASE = process.env.NEXT_PUBLIC_API_URL || "http://travel-backend.local";
+const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 type Blog = {
   _id: string;

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Loader2, ImagePlus } from "lucide-react";
 
-const BASE = process.env.NEXT_PUBLIC_API_URL || "http://travel-backend.local";
+const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 export default function BlogPostClient() {
   const router = useRouter();

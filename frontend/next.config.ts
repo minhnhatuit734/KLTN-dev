@@ -6,7 +6,7 @@ const nextConfig: NextConfig = {
     // Cấu hình nhiều domain
     domains: [
       "localhost",
-      "travel-backend.local", 
+      "localhost:4000", 
       "example.com" // Bạn có thể thêm nhiều domain khác
     ],
     remotePatterns: [
@@ -17,7 +17,7 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: "http",
-        hostname: "travel-backend.local",
+        hostname: "localhost:4000",
         port: "80", 
       },
       {

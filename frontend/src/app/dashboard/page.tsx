@@ -62,7 +62,7 @@ type Tour = {
   organizer?: any;
 };
 
-const BASE = process.env.NEXT_PUBLIC_API_URL || "http://travel-backend.local";
+const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 const tabs = [
   { key: "revenue", label: "Doanh thu", icon: BarChart2 },
