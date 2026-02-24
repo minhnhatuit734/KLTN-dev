@@ -1,0 +1,50 @@
+{
+  "name": "tour-booking-microservices",
+  "version": "1.0.0",
+  "description": "Tour Booking System - Microservice Architecture",
+  "private": true,
+  "author": "Development Team",
+  "license": "MIT",
+  "workspaces": [
+    "packages/common",
+    "services/*",
+    "frontend"
+  ],
+  "scripts": {
+    "install:all": "npm install && npm install -w packages/common && npm install -w services/* && npm install -w frontend",
+    "build:all": "npm run build -w packages/common && npm run build -w services/api-gateway && npm run build -w services/auth-service && npm run build -w services/users-service && npm run build -w services/tours-service && npm run build -w services/bookings-service && npm run build -w services/reviews-service && npm run build -w services/blog-service && npm run build -w services/chat-service",
+    "dev:gateway": "npm run start:dev -w services/api-gateway",
+    "dev:auth": "npm run start:dev -w services/auth-service",
+    "dev:users": "npm run start:dev -w services/users-service",
+    "dev:tours": "npm run start:dev -w services/tours-service",
+    "dev:bookings": "npm run start:dev -w services/bookings-service",
+    "dev:reviews": "npm run start:dev -w services/reviews-service",
+    "dev:blog": "npm run start:dev -w services/blog-service",
+    "dev:chat": "npm run start:dev -w services/chat-service",
+    "dev:frontend": "npm run dev -w frontend",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f",
+    "docker:build": "docker-compose build",
+    "seed:rich": "node scripts/seed-rich.js",
+    "lint": "npm run lint -w services/* && npm run lint -w frontend",
+    "test": "npm run test -w services/*"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.1",
+    "@types/node": "^20.4.2",
+    "typescript": "^5.1.6"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=9.0.0"
+  },
+  "keywords": [
+    "microservices",
+    "nestjs",
+    "mongodb",
+    "docker",
+    "tour-booking",
+    "api-gateway"
+  ]
+}

@@ -44,7 +44,7 @@ export default function LoginPage() {
 
         setTimeout(() => {
           if (data.user.role === "admin") {
-            router.push("/dashboard/?id=${userId}`");
+            router.push(`/dashboard?id=${data.user._id}`);
           } else {
             router.push("/");
           }
