@@ -7,8 +7,8 @@ pipeline {
 
     environment {
         DOCKERHUB_CREDENTIALS = credentials('travelweb-dockerhub')
-        DOCKER_IMAGE_FRONTEND = '<mnhat1>/frontend'
-        DOCKER_IMAGE_BACKEND = '<mnhat1>/backend'
+        DOCKER_IMAGE_FRONTEND = 'mnhat1/frontend'
+        DOCKER_IMAGE_BACKEND = 'mnhat1/backend'
     }
 
     stages {
@@ -33,7 +33,7 @@ pipeline {
         stage('Frontend Build') {
             steps {
                 dir('frontend') {
-                    sh 'npm run build || true'
+                    sh 'npm run build'
                 }
             }
         }
@@ -50,7 +50,7 @@ pipeline {
         stage('Backend Build') {
             steps {
                 dir('backend') {
-                    sh 'npm run build || true'
+                    sh 'npm run build'
                 }
             }
         }
@@ -58,14 +58,16 @@ pipeline {
         // ================= SONAR =================
         stage('SonarQube Analysis') {
             steps {
-                withSonarQubeEnv('sonar-server') {
-                    sh '''
-                    sonar-scanner \
-                    -Dsonar.projectKey=kltn \
-                    -Dsonar.sources=. \
-                    -Dsonar.host.url=http://localhost:9000 \
-                    -Dsonar.login=$SONAR_AUTH_TOKEN
-                    '''
+                script {
+                    def scannerHome = tool 'sonar-scanner'
+                    withSonarQubeEnv('sonar-server') {
+                        sh """
+                        ${scannerHome}/bin/sonar-scanner \
+                        -Dsonar.projectKey=kltn \
+                        -Dsonar.sources=. \
+                        -Dsonar.host.url=http://localhost:9000
+                        """
+                    }
                 }
             }
         }
@@ -73,29 +75,25 @@ pipeline {
         // ================= DOCKER =================
         stage('Build Docker Images') {
             steps {
-                script {
-                    sh "docker build -t ${DOCKER_IMAGE_FRONTEND}:latest ./frontend || true"
-                    sh "docker build -t ${DOCKER_IMAGE_BACKEND}:latest ./backend || true"
-                }
+                sh "docker build -t ${DOCKER_IMAGE_FRONTEND}:latest ./frontend"
+                sh "docker build -t ${DOCKER_IMAGE_BACKEND}:latest ./backend"
             }
         }
 
         stage('Push Docker Images') {
             steps {
-                script {
-                    sh """
-                    echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKERHUB_CREDENTIALS_USR --password-stdin
-                    docker push ${DOCKER_IMAGE_FRONTEND}:latest || true
-                    docker push ${DOCKER_IMAGE_BACKEND}:latest || true
-                    """
-                }
+                sh """
+                echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKERHUB_CREDENTIALS_USR --password-stdin
+                docker push ${DOCKER_IMAGE_FRONTEND}:latest
+                docker push ${DOCKER_IMAGE_BACKEND}:latest
+                """
             }
         }
 
         stage('Deploy') {
             steps {
                 sh '''
-                docker-compose down || true
+                docker-compose down
                 docker-compose up -d
                 '''
             }
