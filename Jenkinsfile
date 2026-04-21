@@ -3,6 +3,7 @@ pipeline {
 
     tools {
         nodejs 'NODE20'
+        sonarRunner 'sonar-scanner'
     }
 
     environment {
@@ -21,23 +22,46 @@ pipeline {
             }
         }
 
-        stage('Install Dependencies') {
+        // ================= FRONTEND =================
+        stage('Frontend Install') {
             steps {
-                sh 'npm install'
+                dir('frontend') {
+                    sh 'npm install'
+                }
             }
         }
 
-        stage('Build') {
+        stage('Frontend Build') {
             steps {
-                sh 'npm run build || true'
+                dir('frontend') {
+                    sh 'npm run build || true'
+                }
             }
         }
 
+        // ================= BACKEND =================
+        stage('Backend Install') {
+            steps {
+                dir('backend') {
+                    sh 'npm install'
+                }
+            }
+        }
+
+        stage('Backend Build') {
+            steps {
+                dir('backend') {
+                    sh 'npm run build || true'
+                }
+            }
+        }
+
+        // ================= SONAR =================
         stage('SonarQube Analysis') {
             steps {
                 withSonarQubeEnv('sonar-server') {
                     sh '''
-                    sonar-scanner \
+                    $SONAR_RUNNER_HOME/bin/sonar-scanner \
                     -Dsonar.projectKey=kltn \
                     -Dsonar.sources=. \
                     -Dsonar.host.url=http://localhost:9000 \
@@ -47,6 +71,7 @@ pipeline {
             }
         }
 
+        // ================= DOCKER =================
         stage('Build Docker Images') {
             steps {
                 script {
@@ -68,7 +93,7 @@ pipeline {
             }
         }
 
-        stage('Deploy (Docker Compose)') {
+        stage('Deploy') {
             steps {
                 sh '''
                 docker-compose down || true
@@ -83,7 +108,7 @@ pipeline {
             echo '✅ Pipeline chạy thành công!'
         }
         failure {
-            echo '❌ Pipeline thất bại. Kiểm tra lại log.'
+            echo '❌ Pipeline thất bại.'
         }
     }
 }
