@@ -3,7 +3,6 @@ pipeline {
 
     tools {
         nodejs 'NODE20'
-        sonarRunner 'sonar-scanner'
     }
 
     environment {
@@ -61,7 +60,7 @@ pipeline {
             steps {
                 withSonarQubeEnv('sonar-server') {
                     sh '''
-                    $SONAR_RUNNER_HOME/bin/sonar-scanner \
+                    sonar-scanner \
                     -Dsonar.projectKey=kltn \
                     -Dsonar.sources=. \
                     -Dsonar.host.url=http://localhost:9000 \
