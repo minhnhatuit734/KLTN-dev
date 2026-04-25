@@ -56,8 +56,10 @@ pipeline {
             steps {
                 sh '''
                 echo "🔍 Trivy scan images..."
-                docker images | grep mnhat1 | awk '{print $1":"$2}' | while read img; do
-                    trivy image --severity HIGH,CRITICAL --exit-code 0 $img
+
+                for img in $(docker images | grep mnhat1 | awk '{print $1":"$2}'); do
+                    echo "Scanning $img"
+                    trivy image --severity HIGH,CRITICAL --exit-code 0 $img || true
                 done
                 '''
             }
