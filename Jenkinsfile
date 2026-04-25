@@ -40,9 +40,23 @@ pipeline {
         stage('Deploy') {
             steps {
                 sh '''
+                set -e
+                
+                # Stop and remove all containers
                 docker-compose down -v --remove-orphans 2>/dev/null || true
-                sleep 3
+                
+                # Clean up stale containers and networks
+                docker container prune -f --filter "until=1h" 2>/dev/null || true
+                docker network prune -f 2>/dev/null || true
+                
+                # Wait for port to be released
+                sleep 5
+                
+                # Start fresh
                 docker-compose up -d --force-recreate
+                
+                # Wait for services to be ready
+                sleep 10
                 '''
             }
         }
