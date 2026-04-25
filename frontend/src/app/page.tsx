@@ -154,7 +154,7 @@ export default function HomePage() {
           </h2>
           <p className="mb-7 text-lg md:text-xl text-sky-100">
             {user
-              ? "Xin chào! Sẵn sàng lên đường cùng TourismWorld."
+              ? "Xin chào! Sẵn sàng lên đường cùng TourismWorld nào."
               : "Đặt tour dễ dàng – Trải nghiệm tuyệt vời chỉ một cú click!"}
           </p>
           {!user && (
