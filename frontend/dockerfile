@@ -9,7 +9,7 @@ RUN npm install --legacy-peer-deps
 
 # sau đó mới copy source
 COPY . .
-
+RUN npm run build
 EXPOSE 3000
 
 CMD ["npm", "run", "start"]
