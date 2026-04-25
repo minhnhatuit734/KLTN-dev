@@ -55,7 +55,7 @@ pipeline {
                 sleep 10
                 
                 # Start fresh
-                docker-compose up -d --force-recreate
+                docker-compose up -d
                 
                 # Wait for services to stabilize
                 sleep 15
