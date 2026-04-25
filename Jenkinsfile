@@ -9,7 +9,7 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                git branch: 'fix/jenkins-pipeline',
+                git branch: 'fix/docker-compose-final',
                     credentialsId: 'github',
                     url: 'https://github.com/Lghthien/KLTN.git'
             }
@@ -22,13 +22,13 @@ pipeline {
             }
         }
 
-        stage('Build Docker Images') {
+        stage('Build Images') {
             steps {
-                sh 'docker-compose build'
+                sh 'docker-compose build --no-cache'
             }
         }
 
-        stage('Push Docker Images') {
+        stage('Push Images') {
             steps {
                 sh '''
                 echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKERHUB_CREDENTIALS_USR --password-stdin
@@ -49,10 +49,10 @@ pipeline {
 
     post {
         success {
-            echo '✅ Pipeline chạy thành công!'
+            echo '✅ SUCCESS: Pipeline chạy hoàn chỉnh!'
         }
         failure {
-            echo '❌ Pipeline thất bại.'
+            echo '❌ FAILED: Kiểm tra log!'
         }
     }
 }
