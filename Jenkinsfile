@@ -9,7 +9,7 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                git branch: 'fix/jenkin-pipeline',
+                git branch: 'fix/jenkins-pipeline',
                     credentialsId: 'github',
                     url: 'https://github.com/Lghthien/KLTN.git'
             }
