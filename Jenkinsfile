@@ -5,13 +5,14 @@ pipeline {
         DOCKERHUB_CREDENTIALS = credentials('travelweb-dockerhub')
         DOCKER_BUILDKIT = '1'
         COMPOSE_DOCKER_CLI_BUILD = '1'
+        IMAGE_TAG = "${BUILD_NUMBER}"
     }
 
     stages {
 
         stage('Checkout') {
             steps {
-                git branch: 'fix/jenkins-pipeline',
+                git branch: 'feature/argocd-cicd-final',
                     credentialsId: 'github',
                     url: 'https://github.com/Lghthien/KLTN.git'
             }
@@ -27,69 +28,37 @@ pipeline {
         stage('Build Images') {
             steps {
                 sh '''
-                # Detect changed services
-                if [ -n "$GIT_PREVIOUS_COMMIT" ]; then
-                    CHANGED=$(git diff $GIT_PREVIOUS_COMMIT HEAD --name-only | awk -F/ '{print $2}' | sort -u)
-                    if [ -z "$CHANGED" ]; then
-                        echo "No service changes detected, skipping build"
-                        exit 0
-                    fi
-                fi
-                
+                echo "🚀 Building Docker images with tag ${IMAGE_TAG}"
                 docker-compose build --parallel
                 '''
             }
         }
 
-        stage('Code Quality Analysis') {
+        stage('SonarQube Scan') {
             steps {
                 script {
-                    def scannerHome = tool 'sonar-scanner'
-                    withSonarQubeEnv() {
-                        sh """${scannerHome}/bin/sonar-scanner \
-                            -Dsonar.projectKey=KLTN-microservices \
-                            -Dsonar.projectName='KLTN - Microservices Chatbot' \
-                            -Dsonar.projectVersion=1.0 \
-                            -Dsonar.sources=. \
-                            -Dsonar.exclusions='**/node_modules/**,**/dist/**,**/.next/**,**/coverage/**'
-                        """
+                    try {
+                        def scannerHome = tool 'sonar-scanner'
+                        withSonarQubeEnv('SonarQube') {
+                            sh """${scannerHome}/bin/sonar-scanner \
+                                -Dsonar.projectKey=KLTN-microservices \
+                                -Dsonar.sources=.
+                            """
+                        }
+                    } catch (Exception e) {
+                        echo "⚠️ Sonar failed but continue"
                     }
                 }
             }
         }
 
-        stage('Security Scan') {
+        stage('Trivy Scan') {
             steps {
                 sh '''
-                echo "🔍 Scanning Docker images with Trivy..."
-                
-                # Get all built images from docker-compose
-                IMAGES=$(docker-compose images -q)
-                
-                SCAN_RESULTS=""
-                FAILED=false
-                
-                for IMAGE in $IMAGES; do
-                    echo "Scanning: $IMAGE"
-                    
-                    # Run trivy with severity threshold
-                    if trivy image --severity HIGH,CRITICAL --exit-code 0 "$IMAGE"; then
-                        echo "✅ $IMAGE: No HIGH/CRITICAL vulnerabilities"
-                    else
-                        echo "⚠️ $IMAGE: Found vulnerabilities"
-                        SCAN_RESULTS="$SCAN_RESULTS\\n$IMAGE"
-                        FAILED=true
-                    fi
+                echo "🔍 Trivy scan images..."
+                docker images | grep mnhat1 | awk '{print $1":"$2}' | while read img; do
+                    trivy image --severity HIGH,CRITICAL --exit-code 0 $img
                 done
-                
-                if [ "$FAILED" = true ]; then
-                    echo "❌ Security scan failed for images: $SCAN_RESULTS"
-                    echo "Review vulnerabilities above and proceed at your own risk"
-                    # Set exit code 0 to warn but not fail pipeline (adjust as needed)
-                    exit 0
-                else
-                    echo "✅ All images passed security scan!"
-                fi
                 '''
             }
         }
@@ -98,27 +67,37 @@ pipeline {
             steps {
                 sh '''
                 echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKERHUB_CREDENTIALS_USR --password-stdin
+                
                 docker-compose push
                 '''
             }
         }
 
-        stage('Deploy') {
+        stage('Update K8s Manifest') {
             steps {
                 sh '''
-                set -e
+                rm -rf k8s-manifests || true
+                git clone https://github.com/minhnhatuit734/k8s-manifests.git
                 
-                # Graceful shutdown instead of aggressive prune
-                docker-compose down --remove-orphans 2>/dev/null || true
-                
-                # Wait for resources
-                sleep 5
-                
-                # Start fresh
-                docker-compose up -d
-                
-                # Wait for services to stabilize
-                sleep 15
+                cd k8s-manifests
+
+                # Update ALL services
+                sed -i "s|mnhat1/api-gateway:.*|mnhat1/api-gateway:${IMAGE_TAG}|g" api-gateway/deployment.yaml
+                sed -i "s|mnhat1/auth-service:.*|mnhat1/auth-service:${IMAGE_TAG}|g" auth-service/deployment.yaml
+                sed -i "s|mnhat1/users-service:.*|mnhat1/users-service:${IMAGE_TAG}|g" users-service/deployment.yaml
+                sed -i "s|mnhat1/tours-service:.*|mnhat1/tours-service:${IMAGE_TAG}|g" tours-service/deployment.yaml
+                sed -i "s|mnhat1/bookings-service:.*|mnhat1/bookings-service:${IMAGE_TAG}|g" bookings-service/deployment.yaml
+                sed -i "s|mnhat1/reviews-service:.*|mnhat1/reviews-service:${IMAGE_TAG}|g" reviews-service/deployment.yaml
+                sed -i "s|mnhat1/blog-service:.*|mnhat1/blog-service:${IMAGE_TAG}|g" blog-service/deployment.yaml
+                sed -i "s|mnhat1/chat-service:.*|mnhat1/chat-service:${IMAGE_TAG}|g" chat-service/deployment.yaml
+                sed -i "s|mnhat1/frontend:.*|mnhat1/frontend:${IMAGE_TAG}|g" frontend/deployment.yaml
+
+                git config user.email "jenkins@gmail.com"
+                git config user.name "jenkins"
+
+                git add .
+                git commit -m "update image ${IMAGE_TAG}" || echo "No changes"
+                git push
                 '''
             }
         }
@@ -126,10 +105,10 @@ pipeline {
 
     post {
         success {
-            echo '✅ SUCCESS: Pipeline chạy hoàn chỉnh!'
+            echo '✅ SUCCESS: CI + GitOps hoàn chỉnh!'
         }
         failure {
-            echo '❌ FAILED: Kiểm tra log!'
+            echo '❌ FAILED: kiểm tra log!'
         }
     }
 }

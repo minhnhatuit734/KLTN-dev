@@ -8,7 +8,7 @@ services:
 
   api-gateway:
     build: ./services/api-gateway
-    image: mnhat1/api-gateway:latest
+    image: mnhat1/api-gateway:${BUILD_NUMBER}
     ports:
       - "4000:4000"
     depends_on:
@@ -19,7 +19,7 @@ services:
 
   auth-service:
     build: ./services/auth-service
-    image: mnhat1/auth-service:latest
+    image: mnhat1/auth-service:${BUILD_NUMBER}
     ports:
       - "3002:3002"
     networks:
@@ -27,7 +27,7 @@ services:
 
   users-service:
     build: ./services/users-service
-    image: mnhat1/users-service:latest
+    image: mnhat1/users-service:${BUILD_NUMBER}
     ports:
       - "3001:3001"
     networks:
@@ -35,7 +35,7 @@ services:
 
   tours-service:
     build: ./services/tours-service
-    image: mnhat1/tours-service:latest
+    image: mnhat1/tours-service:${BUILD_NUMBER}
     ports:
       - "3003:3003"
     networks:
@@ -43,7 +43,7 @@ services:
 
   bookings-service:
     build: ./services/bookings-service
-    image: mnhat1/bookings-service:latest
+    image: mnhat1/bookings-service:${BUILD_NUMBER}
     ports:
       - "3004:3004"
     networks:
@@ -51,7 +51,7 @@ services:
 
   reviews-service:
     build: ./services/reviews-service
-    image: mnhat1/reviews-service:latest
+    image: mnhat1/reviews-service:${BUILD_NUMBER}
     ports:
       - "3005:3005"
     networks:
@@ -59,7 +59,7 @@ services:
 
   blog-service:
     build: ./services/blog-service
-    image: mnhat1/blog-service:latest
+    image: mnhat1/blog-service:${BUILD_NUMBER}
     ports:
       - "3006:3006"
     networks:
@@ -67,7 +67,7 @@ services:
 
   chat-service:
     build: ./services/chat-service
-    image: mnhat1/chat-service:latest
+    image: mnhat1/chat-service:${BUILD_NUMBER}
     ports:
       - "3007:3007"
     networks:
@@ -75,7 +75,7 @@ services:
 
   frontend:
     build: ./frontend
-    image: mnhat1/frontend:latest
+    image: mnhat1/frontend:${BUILD_NUMBER}
     ports:
       - "3000:3000"
     depends_on:
