@@ -42,21 +42,23 @@ pipeline {
                 sh '''
                 set -e
                 
-                # Stop and remove all containers
+                # Kill all running containers
+                docker ps -q | xargs docker kill 2>/dev/null || true
+                
+                # Remove all containers, networks, volumes
                 docker-compose down -v --remove-orphans 2>/dev/null || true
                 
-                # Clean up stale containers and networks
-                docker container prune -f --filter "until=1h" 2>/dev/null || true
-                docker network prune -f 2>/dev/null || true
+                # System cleanup
+                docker system prune -af --volumes 2>/dev/null || true
                 
-                # Wait for port to be released
-                sleep 5
+                # Wait for OS to release resources
+                sleep 10
                 
                 # Start fresh
                 docker-compose up -d --force-recreate
                 
-                # Wait for services to be ready
-                sleep 10
+                # Wait for services to stabilize
+                sleep 15
                 '''
             }
         }
