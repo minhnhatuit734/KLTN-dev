@@ -69,10 +69,6 @@ pipeline {
                 '''
             }
         }
-                sleep 15
-                '''
-            }
-        }
     }
 
     post {
