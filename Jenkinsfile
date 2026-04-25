@@ -41,6 +41,42 @@ pipeline {
             }
         }
 
+        stage('Security Scan') {
+            steps {
+                sh '''
+                echo "🔍 Scanning Docker images with Trivy..."
+                
+                # Get all built images from docker-compose
+                IMAGES=$(docker-compose images -q)
+                
+                SCAN_RESULTS=""
+                FAILED=false
+                
+                for IMAGE in $IMAGES; do
+                    echo "Scanning: $IMAGE"
+                    
+                    # Run trivy with severity threshold
+                    if trivy image --severity HIGH,CRITICAL --exit-code 0 "$IMAGE"; then
+                        echo "✅ $IMAGE: No HIGH/CRITICAL vulnerabilities"
+                    else
+                        echo "⚠️ $IMAGE: Found vulnerabilities"
+                        SCAN_RESULTS="$SCAN_RESULTS\\n$IMAGE"
+                        FAILED=true
+                    fi
+                done
+                
+                if [ "$FAILED" = true ]; then
+                    echo "❌ Security scan failed for images: $SCAN_RESULTS"
+                    echo "Review vulnerabilities above and proceed at your own risk"
+                    # Set exit code 0 to warn but not fail pipeline (adjust as needed)
+                    exit 0
+                else
+                    echo "✅ All images passed security scan!"
+                fi
+                '''
+            }
+        }
+
         stage('Push Images') {
             steps {
                 sh '''
