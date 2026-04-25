@@ -2,11 +2,12 @@ FROM node:20-alpine
 
 WORKDIR /app
 
+# chỉ copy package trước để cache
 COPY package*.json ./
 
-RUN npm config set registry https://registry.npmjs.org/
-RUN npm ci --legacy-peer-deps
+RUN npm install --legacy-peer-deps
 
+# sau đó mới copy source
 COPY . .
 
 EXPOSE 3002
