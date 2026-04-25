@@ -3,7 +3,6 @@ version: "3.9"
 services:
   mongodb:
     image: mongo:7.0
-    container_name: tour-mongodb
     ports:
       - "27017:27017"
     networks:
