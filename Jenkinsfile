@@ -3,6 +3,8 @@ pipeline {
 
     environment {
         DOCKERHUB_CREDENTIALS = credentials('travelweb-dockerhub')
+        DOCKER_BUILDKIT = '1'
+        COMPOSE_DOCKER_CLI_BUILD = '1'
     }
 
     stages {
@@ -24,7 +26,18 @@ pipeline {
 
         stage('Build Images') {
             steps {
-                sh 'docker-compose build'
+                sh '''
+                # Detect changed services
+                if [ -n "$GIT_PREVIOUS_COMMIT" ]; then
+                    CHANGED=$(git diff $GIT_PREVIOUS_COMMIT HEAD --name-only | awk -F/ '{print $2}' | sort -u)
+                    if [ -z "$CHANGED" ]; then
+                        echo "No service changes detected, skipping build"
+                        exit 0
+                    fi
+                fi
+                
+                docker-compose build --parallel
+                '''
             }
         }
 
@@ -42,22 +55,20 @@ pipeline {
                 sh '''
                 set -e
                 
-                # Kill all running containers
-                docker ps -q | xargs docker kill 2>/dev/null || true
+                # Graceful shutdown instead of aggressive prune
+                docker-compose down --remove-orphans 2>/dev/null || true
                 
-                # Remove all containers, networks, volumes
-                docker-compose down -v --remove-orphans 2>/dev/null || true
-                
-                # System cleanup
-                docker system prune -af --volumes 2>/dev/null || true
-                
-                # Wait for OS to release resources
-                sleep 10
+                # Wait for resources
+                sleep 5
                 
                 # Start fresh
                 docker-compose up -d
                 
                 # Wait for services to stabilize
+                sleep 15
+                '''
+            }
+        }
                 sleep 15
                 '''
             }
