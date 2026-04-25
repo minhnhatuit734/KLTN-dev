@@ -1,157 +1,90 @@
+version: "3.9"
+
 services:
-  # Optional local MongoDB (not used when MONGO_URL points to Atlas)
   mongodb:
     image: mongo:7.0
     container_name: tour-mongodb
     ports:
       - "27017:27017"
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: password
-    volumes:
-      - mongodb_data:/data/db
     networks:
       - tour-network
 
   api-gateway:
-    build:
-      context: ./services/api-gateway
-      dockerfile: dockerfile
-    container_name: tour-api-gateway
+    build: ./services/api-gateway
+    image: mnhat1/api-gateway:latest
     ports:
       - "4000:4000"
     depends_on:
       - auth-service
       - users-service
-      - tours-service
-      - bookings-service
-      - reviews-service
-      - blog-service
-      - chat-service
-    environment:
-      PORT: 4000
-      AUTH_SERVICE_URL: http://auth-service:3002
-      USERS_SERVICE_URL: http://users-service:3001
-      TOURS_SERVICE_URL: http://tours-service:3003
-      BOOKINGS_SERVICE_URL: http://bookings-service:3004
-      REVIEWS_SERVICE_URL: http://reviews-service:3005
-      BLOG_SERVICE_URL: http://blog-service:3006
-      CHAT_SERVICE_URL: http://chat-service:3007
     networks:
       - tour-network
 
   auth-service:
-    build:
-      context: ./services/auth-service
-      dockerfile: dockerfile
-    container_name: tour-auth-service
+    build: ./services/auth-service
+    image: mnhat1/auth-service:latest
     ports:
       - "3002:3002"
-    depends_on:
-      - users-service
-    environment:
-      PORT: 3002
-      USERS_SERVICE_URL: http://users-service:3001
-      JWT_SECRET: your-secret-key-change-in-production
     networks:
       - tour-network
 
   users-service:
-    build:
-      context: ./services/users-service
-      dockerfile: dockerfile
-    container_name: tour-users-service
+    build: ./services/users-service
+    image: mnhat1/users-service:latest
     ports:
       - "3001:3001"
-    environment:
-      PORT: 3001
-      MONGO_URL: ${MONGO_ATLAS_URI:-mongodb+srv://lethien:110676@travelweb.zdjmwom.mongodb.net}/tour_users?appName=travelweb
-      JWT_SECRET: your-secret-key-change-in-production
     networks:
       - tour-network
 
   tours-service:
-    build:
-      context: ./services/tours-service
-      dockerfile: dockerfile
-    container_name: tour-tours-service
+    build: ./services/tours-service
+    image: mnhat1/tours-service:latest
     ports:
       - "3003:3003"
-    environment:
-      PORT: 3003
-      MONGO_URL: ${MONGO_ATLAS_URI:-mongodb+srv://lethien:110676@travelweb.zdjmwom.mongodb.net}/tour_tours?appName=travelweb
     networks:
       - tour-network
 
   bookings-service:
-    build:
-      context: ./services/bookings-service
-      dockerfile: dockerfile
-    container_name: tour-bookings-service
+    build: ./services/bookings-service
+    image: mnhat1/bookings-service:latest
     ports:
       - "3004:3004"
-    environment:
-      PORT: 3004
-      MONGO_URL: ${MONGO_ATLAS_URI:-mongodb+srv://lethien:110676@travelweb.zdjmwom.mongodb.net}/tour_bookings?appName=travelweb
     networks:
       - tour-network
 
   reviews-service:
-    build:
-      context: ./services/reviews-service
-      dockerfile: dockerfile
-    container_name: tour-reviews-service
+    build: ./services/reviews-service
+    image: mnhat1/reviews-service:latest
     ports:
       - "3005:3005"
-    environment:
-      PORT: 3005
-      MONGO_URL: ${MONGO_ATLAS_URI:-mongodb+srv://lethien:110676@travelweb.zdjmwom.mongodb.net}/tour_reviews?appName=travelweb
     networks:
       - tour-network
 
   blog-service:
-    build:
-      context: ./services/blog-service
-      dockerfile: dockerfile
-    container_name: tour-blog-service
+    build: ./services/blog-service
+    image: mnhat1/blog-service:latest
     ports:
       - "3006:3006"
-    environment:
-      PORT: 3006
-      MONGO_URL: ${MONGO_ATLAS_URI:-mongodb+srv://lethien:110676@travelweb.zdjmwom.mongodb.net}/tour_blog?appName=travelweb
     networks:
       - tour-network
 
   chat-service:
-    build:
-      context: ./services/chat-service
-      dockerfile: dockerfile
-    container_name: tour-chat-service
+    build: ./services/chat-service
+    image: mnhat1/chat-service:latest
     ports:
       - "3007:3007"
-    environment:
-      PORT: 3007
-      MONGO_URL: ${MONGO_ATLAS_URI:-mongodb+srv://lethien:110676@travelweb.zdjmwom.mongodb.net}/tour_chat?appName=travelweb
-      TOGETHER_API_KEY: ${TOGETHER_API_KEY:-}
     networks:
       - tour-network
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: dockerfile
-    container_name: tour-frontend
+    build: ./frontend
+    image: mnhat1/frontend:latest
     ports:
       - "3000:3000"
     depends_on:
       - api-gateway
-    environment:
-      NEXT_PUBLIC_API_URL: http://localhost:4000
     networks:
       - tour-network
-
-volumes:
-  mongodb_data:
 
 networks:
   tour-network:
