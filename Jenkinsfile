@@ -14,7 +14,7 @@ pipeline {
             steps {
                 git branch: 'feature/argocd-cicd-final',
                     credentialsId: 'github',
-                    url: 'https://github.com/Lghthien/KLTN.git'
+                    url: 'https://github.com/minhnhatuit734/KLTN-dev.git'
             }
         }
 
