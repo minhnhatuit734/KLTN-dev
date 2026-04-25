@@ -40,8 +40,9 @@ pipeline {
         stage('Deploy') {
             steps {
                 sh '''
-                docker-compose down -v --remove-orphans || true
-                docker-compose up -d
+                docker-compose down -v --remove-orphans 2>/dev/null || true
+                sleep 3
+                docker-compose up -d --force-recreate
                 '''
             }
         }
