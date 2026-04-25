@@ -9,7 +9,7 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                git branch: 'fix/docker-compose-final',
+                git branch: 'fix/jenkin-pipeline',
                     credentialsId: 'github',
                     url: 'https://github.com/Lghthien/KLTN.git'
             }
