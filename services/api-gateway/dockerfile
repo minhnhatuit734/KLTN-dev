@@ -1,17 +1,8 @@
 FROM node:20-alpine
-
 WORKDIR /app
-
-# chỉ copy package trước để cache
 COPY package*.json ./
-
 RUN npm install --legacy-peer-deps
-
-# sau đó mới copy source
 COPY . .
-
-RUN npm run build
-RUN npm run build
+RUN npm run build   # ← chỉ 1 lần thôi
 EXPOSE 4000
-
 CMD ["node", "dist/main.js"]
