@@ -1,26 +1,20 @@
 # Stage 1: Build
 FROM node:20-alpine AS builder
- 
 WORKDIR /app
- 
 COPY package*.json ./
 RUN npm install --legacy-peer-deps
- 
 COPY . .
 RUN npm run build
- 
-# Stage 2: Runtime (chỉ chứa app + dependencies cần thiết)
+
+# Stage 2: Runtime (minimal size)
 FROM node:20-alpine
- 
 WORKDIR /app
- 
-COPY --from=builder /app/package*.json ./
-RUN npm install --legacy-peer-deps --production
- 
-# Copy build output từ stage 1
-COPY --from=builder /app/.next .next
+
+# Copy only standalone build output
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
- 
+
 EXPOSE 3000
- 
-CMD ["node", ".next/standalone/server.js"]
+
+CMD ["node", "server.js"]
