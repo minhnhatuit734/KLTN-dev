@@ -3,8 +3,8 @@ pipeline {
 
     environment {
         DOCKERHUB_CREDENTIALS = credentials('travelweb-dockerhub')
-        DOCKER_BUILDKIT = '0'
-        COMPOSE_DOCKER_CLI_BUILD = '0'
+        DOCKER_BUILDKIT = '1'
+        COMPOSE_DOCKER_CLI_BUILD = '1'
         IMAGE_TAG = "${BUILD_NUMBER}"
     }
 
