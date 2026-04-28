@@ -1,36 +1,54 @@
 services:
   api-gateway:
-    build: ./services/api-gateway
+    build:
+      context: ./services/api-gateway
+      network: host          # ← thêm dòng này
     image: mnhat1/api-gateway:${IMAGE_TAG}
 
   auth-service:
-    build: ./services/auth-service
+    build:
+      context: ./services/auth-service
+      network: host
     image: mnhat1/auth-service:${IMAGE_TAG}
 
   users-service:
-    build: ./services/users-service
+    build:
+      context: ./services/users-service
+      network: host
     image: mnhat1/users-service:${IMAGE_TAG}
 
   tours-service:
-    build: ./services/tours-service
+    build:
+      context: ./services/tours-service
+      network: host
     image: mnhat1/tours-service:${IMAGE_TAG}
 
   bookings-service:
-    build: ./services/bookings-service
+    build:
+      context: ./services/bookings-service
+      network: host
     image: mnhat1/bookings-service:${IMAGE_TAG}
 
   reviews-service:
-    build: ./services/reviews-service
+    build:
+      context: ./services/reviews-service
+      network: host
     image: mnhat1/reviews-service:${IMAGE_TAG}
 
   blog-service:
-    build: ./services/blog-service
+    build:
+      context: ./services/blog-service
+      network: host
     image: mnhat1/blog-service:${IMAGE_TAG}
 
   chat-service:
-    build: ./services/chat-service
+    build:
+      context: ./services/chat-service
+      network: host
     image: mnhat1/chat-service:${IMAGE_TAG}
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      network: host
     image: mnhat1/frontend:${IMAGE_TAG}

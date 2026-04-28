@@ -3,26 +3,22 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 COPY package*.json ./
-
-# cài cả dev deps để build
 RUN npm install --legacy-peer-deps
 
 COPY . .
 
-RUN npm run build
+# Gọi nest qua npx thay vì trực tiếp
+RUN npx nest build
 
-
-# ====== runtime stage ======
+# --- Production stage ---
 FROM node:20-alpine
 
 WORKDIR /app
 
-# chỉ copy file cần thiết
-COPY --from=builder /app/package*.json ./
+COPY package*.json ./
 RUN npm install --only=production --legacy-peer-deps
 
 COPY --from=builder /app/dist ./dist
 
 EXPOSE 3007
-
-CMD ["node", "dist/main.js"]
+CMD ["node", "dist/main"]
