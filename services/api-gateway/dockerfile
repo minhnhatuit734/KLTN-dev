@@ -1,19 +1,27 @@
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+COPY package*.json ./
+
+# cài cả dev deps để build
+RUN npm install --legacy-peer-deps
+
+COPY . .
+
+RUN npm run build
+
+
+# ====== runtime stage ======
 FROM node:20-alpine
 
 WORKDIR /app
 
-# copy package trước để cache
-COPY package*.json ./
+# chỉ copy file cần thiết
+COPY --from=builder /app/package*.json ./
+RUN npm install --only=production --legacy-peer-deps
 
-# FIX: dùng install thay vì ci
-RUN npm config set registry https://registry.npmjs.org/
-RUN npm install --legacy-peer-deps --include=dev
-
-# copy source
-COPY . .
-
-# build nếu có
-RUN npm run build || echo "skip build"
+COPY --from=builder /app/dist ./dist
 
 EXPOSE 4000
 
