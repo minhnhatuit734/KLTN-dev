@@ -37,11 +37,19 @@ pipeline {
         stage('Push Images') {
             steps {
                 sh '''
-                echo "🔐 Login DockerHub"
+                
                 echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKERHUB_CREDENTIALS_USR --password-stdin
 
-                echo "📦 Push images"
-                docker-compose push
+                # Push từng image một thay vì dùng docker-compose push (song song)
+                docker push mnhat1/api-gateway:${IMAGE_TAG}
+                docker push mnhat1/auth-service:${IMAGE_TAG}
+                docker push mnhat1/users-service:${IMAGE_TAG}
+                docker push mnhat1/tours-service:${IMAGE_TAG}
+                docker push mnhat1/bookings-service:${IMAGE_TAG}
+                docker push mnhat1/reviews-service:${IMAGE_TAG}
+                docker push mnhat1/blog-service:${IMAGE_TAG}
+                docker push mnhat1/chat-service:${IMAGE_TAG}
+                docker push mnhat1/frontend:${IMAGE_TAG}
                 '''
             }
         }
