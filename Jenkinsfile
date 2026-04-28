@@ -37,10 +37,10 @@ pipeline {
         stage('Push Images') {
             steps {
                 sh '''
-
+                echo "🔐 Login DockerHub"
                 echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKERHUB_CREDENTIALS_USR --password-stdin
 
-                # Push từng image một thay vì dùng docker-compose push (song song)
+                echo "📤 Push images"
                 docker push mnhat1/api-gateway:${IMAGE_TAG}
                 docker push mnhat1/auth-service:${IMAGE_TAG}
                 docker push mnhat1/users-service:${IMAGE_TAG}
@@ -80,7 +80,6 @@ pipeline {
                     passwordVariable: 'GIT_PASS'
                 )]) {
                     sh '''
-                    # Xóa thư mục cũ nếu tồn tại
                     rm -rf k8s-manifests
 
                     git clone https://$GIT_USER:$GIT_PASS@github.com/minhnhatuit734/k8s-manifests.git
@@ -100,12 +99,13 @@ pipeline {
                     git config user.name "jenkins"
 
                     git add .
-                    git commit -m "Update image tag ${IMAGE_TAG}"
+                    git commit -m "Update image tag ${IMAGE_TAG}" || echo "No changes"
                     git push
                     '''
                 }
             }
         }
+    }
 
     post {
         success {
