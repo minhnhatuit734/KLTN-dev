@@ -29,7 +29,7 @@ pipeline {
             steps {
                 sh '''
                 echo "🚀 Building Docker images with tag ${IMAGE_TAG}"
-                docker-compose build --parallel
+                docker-compose build --no-cache --parallel
                 '''
             }
         }

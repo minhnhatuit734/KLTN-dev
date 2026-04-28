@@ -2,19 +2,20 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
+
+# Cài toàn bộ bao gồm devDependencies (cần next, typescript, tailwind để build)
 RUN npm install --legacy-peer-deps
+
 COPY . .
 RUN npm run build
 
-# Stage 2: Runtime (minimal size)
+# Stage 2: Runtime
 FROM node:20-alpine
 WORKDIR /app
 
-# Copy only standalone build output
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 
 EXPOSE 3000
-
 CMD ["node", "server.js"]
