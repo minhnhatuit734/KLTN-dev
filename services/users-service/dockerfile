@@ -6,6 +6,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # FIX: dùng install thay vì ci
+RUN npm config set registry https://registry.npmjs.org/
 RUN npm install --legacy-peer-deps --include=dev
 
 # copy source
