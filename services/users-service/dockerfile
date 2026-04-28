@@ -6,7 +6,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # FIX: dùng install thay vì ci
-RUN npm install --legacy-peer-deps
+RUN npm install --legacy-peer-deps --include=dev
 
 # copy source
 COPY . .
