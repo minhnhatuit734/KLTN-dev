@@ -3,8 +3,8 @@ pipeline {
 
     environment {
         DOCKERHUB_CREDENTIALS = credentials('travelweb-dockerhub')
-        DOCKER_BUILDKIT = '1'
-        COMPOSE_DOCKER_CLI_BUILD = '1'
+        DOCKER_BUILDKIT = '0'
+        COMPOSE_DOCKER_CLI_BUILD = '0'
         IMAGE_TAG = "${BUILD_NUMBER}"
     }
 
@@ -12,7 +12,7 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                git branch: 'feature/argocd-cicd-final',
+                git branch: 'main',
                     credentialsId: 'github',
                     url: 'https://github.com/minhnhatuit734/KLTN-dev.git'
             }
