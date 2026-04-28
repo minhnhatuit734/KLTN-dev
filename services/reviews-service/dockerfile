@@ -1,29 +1,18 @@
-# Stage 1: build
-FROM node:20-alpine AS builder
-
-WORKDIR /app
-
-# chỉ copy dependency trước để cache
-COPY package*.json ./
-
-# install chuẩn CI
-RUN npm ci --legacy-peer-deps
-
-# copy source
-COPY . .
-
-# build (nếu có)
-RUN npm run build || echo "No build step"
-
-# Stage 2: runtime
 FROM node:20-alpine
 
 WORKDIR /app
 
-# copy từ builder
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/package*.json ./
+# copy package trước để cache
+COPY package*.json ./
+
+# FIX: dùng install thay vì ci
+RUN npm install --legacy-peer-deps
+
+# copy source
+COPY . .
+
+# build nếu có
+RUN npm run build || echo "skip build"
 
 EXPOSE 3005
 
