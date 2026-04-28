@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         IMAGE_TAG = "${BUILD_NUMBER}"
-        DOCKERHUB_CREDENTIALS = credentials('dockerhub')
+        DOCKERHUB_CREDENTIALS = credentials('travelweb-dockerhub')
     }
 
     stages {
@@ -60,7 +60,6 @@ pipeline {
             }
         }
 
-        
         stage('Update K8s Manifests') {
             steps {
                 sh '''
