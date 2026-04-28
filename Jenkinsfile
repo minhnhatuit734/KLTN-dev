@@ -27,12 +27,10 @@ pipeline {
 
         stage('Build Images') {
             steps {
-                retry(3) {  // ← thêm retry 3 lần
-                    sh '''
-                    echo "🚀 Building Docker images with tag ${IMAGE_TAG}"
-                    docker-compose build --parallel
-                    '''
-                }
+                sh '''
+                echo "🚀 Building Docker images with tag ${IMAGE_TAG}"
+                docker-compose build --parallel
+                '''
             }
         }
 
