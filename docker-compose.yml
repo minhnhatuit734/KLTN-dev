@@ -1,88 +1,38 @@
-services:
-  mongodb:
-    image: mongo:7.0
-    ports:
-      - "27017:27017"
-    networks:
-      - tour-network
+version: "3.8"
 
+services:
   api-gateway:
     build: ./services/api-gateway
-    image: mnhat1/api-gateway:${BUILD_NUMBER}
-    ports:
-      - "4000:4000"
-    depends_on:
-      - auth-service
-      - users-service
-    networks:
-      - tour-network
+    image: mnhat1/api-gateway:${IMAGE_TAG}
 
   auth-service:
     build: ./services/auth-service
-    image: mnhat1/auth-service:${BUILD_NUMBER}
-    ports:
-      - "3002:3002"
-    networks:
-      - tour-network
+    image: mnhat1/auth-service:${IMAGE_TAG}
 
   users-service:
     build: ./services/users-service
-    image: mnhat1/users-service:${BUILD_NUMBER}
-    ports:
-      - "3001:3001"
-    networks:
-      - tour-network
+    image: mnhat1/users-service:${IMAGE_TAG}
 
   tours-service:
     build: ./services/tours-service
-    image: mnhat1/tours-service:${BUILD_NUMBER}
-    ports:
-      - "3003:3003"
-    networks:
-      - tour-network
+    image: mnhat1/tours-service:${IMAGE_TAG}
 
   bookings-service:
     build: ./services/bookings-service
-    image: mnhat1/bookings-service:${BUILD_NUMBER}
-    ports:
-      - "3004:3004"
-    networks:
-      - tour-network
+    image: mnhat1/bookings-service:${IMAGE_TAG}
 
   reviews-service:
     build: ./services/reviews-service
-    image: mnhat1/reviews-service:${BUILD_NUMBER}
-    ports:
-      - "3005:3005"
-    networks:
-      - tour-network
+    image: mnhat1/reviews-service:${IMAGE_TAG}
 
   blog-service:
     build: ./services/blog-service
-    image: mnhat1/blog-service:${BUILD_NUMBER}
-    ports:
-      - "3006:3006"
-    networks:
-      - tour-network
+    image: mnhat1/blog-service:${IMAGE_TAG}
 
   chat-service:
     build: ./services/chat-service
-    image: mnhat1/chat-service:${BUILD_NUMBER}
-    ports:
-      - "3007:3007"
-    networks:
-      - tour-network
+    image: mnhat1/chat-service:${IMAGE_TAG}
 
   frontend:
     build: ./frontend
-    image: mnhat1/frontend:${BUILD_NUMBER}
-    ports:
-      - "3000:3000"
-    depends_on:
-      - api-gateway
-    networks:
-      - tour-network
-
-networks:
-  tour-network:
-    driver: bridge
+    image: mnhat1/frontend:${IMAGE_TAG}
