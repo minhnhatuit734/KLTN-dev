@@ -1,15 +1,19 @@
+# Stage 1: Build
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+COPY package*.json ./
+RUN npm install --legacy-peer-deps
+COPY . .
+RUN npm run build
+
+# Stage 2: Production
 FROM node:20-alpine
 
 WORKDIR /app
-
-# chỉ copy package trước để cache
 COPY package*.json ./
+RUN npm install --only=production --legacy-peer-deps
+COPY --from=builder /app/dist ./dist
 
-RUN npm install --legacy-peer-deps
-
-# sau đó mới copy source
-COPY . .
-RUN npm run build
 EXPOSE 3003
-
-CMD ["npm", "run", "start"]
+CMD ["node", "dist/main.js"]
