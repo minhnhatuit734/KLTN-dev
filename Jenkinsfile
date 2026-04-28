@@ -60,23 +60,7 @@ pipeline {
             }
         }
 
-         stage('SonarQube Scan') {
-            steps {
-                script {
-                    try {
-                        def scannerHome = tool 'sonar-scanner'
-                        withSonarQubeEnv('SonarQube') {
-                            sh """${scannerHome}/bin/sonar-scanner \
-                                -Dsonar.projectKey=KLTN-microservices \
-                                -Dsonar.sources=.
-                            """
-                        }
-                    } catch (Exception e) {
-                        echo "⚠️ Sonar failed but continue"
-                    }
-                }
-            }
-        }
+        
         stage('Update K8s Manifests') {
             steps {
                 sh '''
