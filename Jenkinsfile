@@ -26,11 +26,20 @@ pipeline {
             steps {
                 sh '''
                 echo "🚀 Building images..."
-
                 export IMAGE_TAG=${IMAGE_TAG}
-
                 docker-compose build --parallel
                 '''
+            }
+        }
+
+        stage('SonarQube Scan') {
+            steps {
+                script {
+                    def scannerHome = tool 'sonar-scanner'
+                    withSonarQubeEnv('sonarqube') {
+                        sh "${scannerHome}/bin/sonar-scanner"
+                    }
+                }
             }
         }
 
@@ -81,7 +90,6 @@ pipeline {
                 )]) {
                     sh '''
                     rm -rf k8s-manifests
-
                     git clone https://$GIT_USER:$GIT_PASS@github.com/minhnhatuit734/k8s-manifests.git
                     cd k8s-manifests
 
