@@ -9,13 +9,16 @@ COPY . .
 
 RUN npm run build
 
-
+# --- Production stage ---
 FROM node:20-alpine
 
 WORKDIR /app
 
-COPY --from=builder /app ./
+# Copy toàn bộ từ builder bao gồm .next
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
 
 EXPOSE 3000
 
-CMD ["npm", "start"]
+CMD ["node", "server.js"]
