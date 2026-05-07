@@ -133,6 +133,7 @@ services:
       PORT: 3007
       MONGO_URL: ${MONGO_ATLAS_URI:-mongodb+srv://lethien:110676@travelweb.zdjmwom.mongodb.net}/tour_chat?appName=travelweb
       TOGETHER_API_KEY: ${TOGETHER_API_KEY:-}
+      RASA_URL: http://chatbot-server:5005/webhooks/rest/webhook
     networks:
       - tour-network
 
@@ -150,8 +151,103 @@ services:
     networks:
       - tour-network
 
+  chatbot-postgres:
+    image: postgres:15
+    container_name: tour-chatbot-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: chatbot_user
+      POSTGRES_PASSWORD: supersecret
+      POSTGRES_DB: chatbot
+    volumes:
+      - chatbot_pg_data:/var/lib/postgresql/data
+    networks:
+      - tour-network
+
+  chatbot-qdrant:
+    image: qdrant/qdrant:latest
+    container_name: tour-chatbot-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - chatbot_qdrant_data:/qdrant/storage
+    networks:
+      - tour-network
+
+  chatbot-init:
+    build:
+      context: ./ChatBot
+    container_name: tour-chatbot-init
+    depends_on:
+      - chatbot-postgres
+      - chatbot-qdrant
+    environment:
+      DB_HOST: chatbot-postgres
+      DB_NAME: chatbot
+      DB_USER: chatbot_user
+      DB_PASSWORD: supersecret
+      QDRANT_URL: http://chatbot-qdrant:6333
+      SEMANTIC_BACKEND: qdrant
+      SEMANTIC_MODEL_NAME: keepitreal/vietnamese-sbert
+    command: >
+      bash -c "
+      echo 'Waiting for PostgreSQL...' &&
+      sleep 10 &&
+      python -c \"from database.db_connection import get_connection; conn = get_connection(); cur = conn.cursor(); cur.execute('SELECT to_regclass(\\'public.destinations\\')'); exists = cur.fetchone()[0] is not None; exit(0 if exists else 1)\" || 
+      (python -m database.init_db && python -m database.importData && python -m database.importTour) &&
+      python -m scripts.sync_qdrant && python -m scripts.sync_qdrant_tour
+      "
+    networks:
+      - tour-network
+
+  chatbot-actions:
+    build:
+      context: ./ChatBot
+    container_name: tour-chatbot-actions
+    depends_on:
+      chatbot-init:
+        condition: service_completed_successfully
+    environment:
+      DB_HOST: chatbot-postgres
+      DB_NAME: chatbot
+      DB_USER: chatbot_user
+      DB_PASSWORD: supersecret
+      QDRANT_URL: http://chatbot-qdrant:6333
+      SEMANTIC_BACKEND: qdrant
+      SEMANTIC_MODEL_NAME: keepitreal/vietnamese-sbert
+    command: bash -c "cd rasa_bot && rasa run actions"
+    networks:
+      - tour-network
+
+  chatbot-server:
+    build:
+      context: ./ChatBot
+    container_name: tour-chatbot-server
+    depends_on:
+      chatbot-init:
+        condition: service_completed_successfully
+      chatbot-actions:
+        condition: service_started
+    ports:
+      - "5005:5005"
+    environment:
+      DB_HOST: chatbot-postgres
+      DB_NAME: chatbot
+      DB_USER: chatbot_user
+      DB_PASSWORD: supersecret
+      QDRANT_URL: http://chatbot-qdrant:6333
+      SEMANTIC_BACKEND: qdrant
+      SEMANTIC_MODEL_NAME: keepitreal/vietnamese-sbert
+    command: bash -c "cd rasa_bot && rasa run --enable-api --cors '*'"
+    networks:
+      - tour-network
+
 volumes:
   mongodb_data:
+  chatbot_pg_data:
+  chatbot_qdrant_data:
 
 networks:
   tour-network:

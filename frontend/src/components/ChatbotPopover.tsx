@@ -4,7 +4,7 @@ import { Send, Bot } from "lucide-react";
 
 export default function ChatbotPopover() {
   const [open, setOpen] = useState(false);
-  const [model] = useState<"llama-3">("llama-3"); // Chỉ 1 model, dùng Together AI (LLaMA3)
+  const [model, setModel] = useState<"llama-3" | "rasa">("rasa"); // Dùng Rasa làm mặc định
   const [messages, setMessages] = useState([
     {
       role: "bot",
@@ -33,29 +33,36 @@ export default function ChatbotPopover() {
       { role: "bot", text: "🤖 Đang trả lời..." },
     ]);
 
-    // Lấy lịch sử hội thoại gần nhất
+    // Lấy lịch sử hội thoại gần nhất (cho LLaMA)
     const history = [...messages, { role: "user", text: question }]
       .filter((m) => m.text !== "🤖 Đang trả lời...")
       .slice(-8);
 
     try {
-      const res = await fetch("http://localhost:4000/chat", {
+      const isRasa = model === "rasa";
+      const endpoint = isRasa ? "http://localhost:4000/chat/rasa" : "http://localhost:4000/chat";
+      
+      const bodyPayload = isRasa 
+        ? { message: question, sender: "user-frontend" }
+        : {
+            model: "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
+            messages: history.map((m) => ({
+              role: m.role === "user" ? "user" : "assistant",
+              content: m.text,
+            })),
+          };
+
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
-          messages: history.map((m) => ({
-            role: m.role === "user" ? "user" : "assistant",
-            content: m.text,
-          })),
-        }),
+        body: JSON.stringify(bodyPayload),
       });
 
       const data = await res.json();
       setLoading(false);
 
-      if (!res.ok || !data.choices) {
-        const errorMsg = data.error || "Lỗi gọi API!";
+      if (!res.ok || (!isRasa && !data.choices)) {
+        const errorMsg = data.error || data.message || "Lỗi gọi API!";
         setMessages((msgs) => [
           ...msgs.filter((m) => m.text !== "🤖 Đang trả lời..."),
           { role: "bot", text: `❌ ${errorMsg}` },
@@ -63,10 +70,20 @@ export default function ChatbotPopover() {
         return;
       }
 
-      const aiText =
-        data.choices?.[0]?.message?.content?.trim() ||
-        data.choices?.[0]?.text?.trim() ||
-        "AI không trả lời được.";
+      let aiText = "AI không trả lời được.";
+      if (isRasa) {
+        if (Array.isArray(data) && data.length > 0) {
+          aiText = data.map((d: any) => d.text).join('\n');
+        } else if (data.text) {
+          aiText = data.text;
+        }
+      } else {
+        aiText =
+          data.choices?.[0]?.message?.content?.trim() ||
+          data.choices?.[0]?.text?.trim() ||
+          "AI không trả lời được.";
+      }
+      
       setMessages((msgs) => [
         ...msgs.filter((m) => m.text !== "🤖 Đang trả lời..."),
         { role: "bot", text: aiText },
@@ -117,9 +134,10 @@ export default function ChatbotPopover() {
             <span className="text-xs text-gray-500">Model:</span>
             <select
               value={model}
+              onChange={(e) => setModel(e.target.value as any)}
               className="px-2 py-1 rounded border text-xs bg-blue-50 border-sky-200"
-              disabled
             >
+              <option value="rasa">Rasa Chatbot (Khuyên dùng)</option>
               <option value="llama-3">LLaMA 3 (Together AI)</option>
             </select>
           </div>

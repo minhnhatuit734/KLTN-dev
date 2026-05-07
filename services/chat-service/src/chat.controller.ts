@@ -70,4 +70,19 @@ export class ChatController {
   deleteMessage(@Param('messageId') messageId: string) {
     return this.chatService.deleteMessage(messageId);
   }
+
+  @Post('rasa')
+  async askRasa(@Body() body: { message: string; sender?: string }) {
+    if (!body.message) {
+      throw new HttpException('Message is required', HttpStatus.BAD_REQUEST);
+    }
+    try {
+      return await this.chatService.askRasa(body.message, body.sender);
+    } catch (err: any) {
+      throw new HttpException(
+        err?.message || 'Error from Rasa bot',
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
 }

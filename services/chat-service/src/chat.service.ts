@@ -69,4 +69,19 @@ export class ChatService {
       stream: false,
     });
   }
+
+  async askRasa(message: string, sender: string = 'user') {
+    const rasaUrl = process.env.RASA_URL || 'http://localhost:5005/webhooks/rest/webhook';
+    try {
+      const axios = require('axios');
+      const response = await axios.post(rasaUrl, {
+        sender,
+        message,
+      });
+      return response.data;
+    } catch (error: any) {
+      console.error('Error calling Rasa:', error.message);
+      throw error;
+    }
+  }
 }
