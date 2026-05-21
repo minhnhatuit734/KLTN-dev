@@ -25,7 +25,7 @@ pipeline {
         stage('Build Images') {
             steps {
                 sh '''
-                echo "🚀 Building images..."
+                echo "Building images..."
                 export IMAGE_TAG=${IMAGE_TAG}
                 docker-compose build --parallel
                 '''
@@ -46,10 +46,10 @@ pipeline {
         stage('Push Images') {
             steps {
                 sh '''
-                echo "🔐 Login DockerHub"
+                echo "Login DockerHub"
                 echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKERHUB_CREDENTIALS_USR --password-stdin
 
-                echo "📤 Push images"
+                echo "Push images"
                 docker push mnhat1/api-gateway:${IMAGE_TAG}
                 docker push mnhat1/auth-service:${IMAGE_TAG}
                 docker push mnhat1/users-service:${IMAGE_TAG}
@@ -66,7 +66,7 @@ pipeline {
         stage('Trivy Scan') {
             steps {
                 sh '''
-                echo "🔍 Scan images"
+                echo "Scan images"
                 for img in $(docker images | grep "mnhat1" | grep "${IMAGE_TAG}" | awk '{print $1":"$2}')
                 do
                     echo "Scanning $img"
@@ -117,10 +117,10 @@ pipeline {
 
     post {
         success {
-            echo "✅ SUCCESS"
+            echo "SUCCESS"
         }
         failure {
-            echo "❌ FAILED"
+            echo "FAILED"
         }
     }
 }
