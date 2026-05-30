@@ -11,7 +11,7 @@ pipeline {
 
     parameters {
         booleanParam(
-            name: 'RUN_SONAR',
+            name: 'sonar-scanner',
             defaultValue: true,
             description: 'Run SonarQube source code analysis'
         )
