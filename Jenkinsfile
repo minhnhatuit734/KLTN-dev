@@ -17,12 +17,6 @@ pipeline {
         )
 
         booleanParam(
-            name: 'WAIT_SONAR_QUALITY_GATE',
-            defaultValue: false,
-            description: 'Wait for SonarQube Quality Gate. Enable after SonarQube analysis works correctly.'
-        )
-
-        booleanParam(
             name: 'SONAR_NON_BLOCKING',
             defaultValue: true,
             description: 'If true, SonarQube failure marks build UNSTABLE but does not stop build/deploy.'
@@ -137,32 +131,11 @@ pipeline {
         }
 
         stage('Quality Scan') {
-            parallel {
-                stage('SonarQube Analysis') {
-                    when {
-                        expression { return params.RUN_SONAR }
-                    }
-
-                    steps {
-                        script {
-                            if (params.SONAR_NON_BLOCKING) {
-                                catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
-                                    def scannerHome = tool "${SONAR_SCANNER_TOOL}"
-
-                                    withSonarQubeEnv() {
-                                        sh """
-                                            set -eu
-
-                                            ${scannerHome}/bin/sonar-scanner \
-                                              -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
-                                              -Dsonar.projectName=${SONAR_PROJECT_NAME} \
-                                              -Dsonar.sources=. \
-                                              -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/.next/**,**/coverage/**,**/k8s-manifests/**,**/.git/** \
-                                              -Dsonar.sourceEncoding=UTF-8
-                                        """
-                                    }
-                                }
-                            } else {
+            steps {
+                script {
+                    if (params.RUN_SONAR) {
+                        if (params.SONAR_NON_BLOCKING) {
+                            catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
                                 def scannerHome = tool "${SONAR_SCANNER_TOOL}"
 
                                 withSonarQubeEnv() {
@@ -178,205 +151,177 @@ pipeline {
                                     """
                                 }
                             }
+                        } else {
+                            def scannerHome = tool "${SONAR_SCANNER_TOOL}"
+
+                            withSonarQubeEnv() {
+                                sh """
+                                    set -eu
+
+                                    ${scannerHome}/bin/sonar-scanner \
+                                      -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
+                                      -Dsonar.projectName=${SONAR_PROJECT_NAME} \
+                                      -Dsonar.sources=. \
+                                      -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/.next/**,**/coverage/**,**/k8s-manifests/**,**/.git/** \
+                                      -Dsonar.sourceEncoding=UTF-8
+                                """
+                            }
                         }
+                    } else {
+                        echo "SonarQube analysis is disabled."
                     }
                 }
 
-                stage('Trivy FS Scan') {
-                    steps {
-                        sh '''
-                            set +e
+                sh '''
+                    set +e
 
-                            trivy fs \
-                              --scanners vuln,secret,misconfig \
-                              --severity HIGH,CRITICAL \
-                              --skip-dirs node_modules \
-                              --skip-dirs frontend/node_modules \
-                              --skip-dirs services/api-gateway/node_modules \
-                              --skip-dirs services/auth-service/node_modules \
-                              --skip-dirs services/users-service/node_modules \
-                              --skip-dirs services/tours-service/node_modules \
-                              --skip-dirs services/bookings-service/node_modules \
-                              --skip-dirs services/reviews-service/node_modules \
-                              --skip-dirs services/blog-service/node_modules \
-                              --skip-dirs services/chat-service/node_modules \
-                              --skip-dirs .git \
-                              --skip-dirs .next \
-                              --skip-dirs dist \
-                              --ignore-unfixed \
-                              --exit-code ${TRIVY_EXIT_CODE} \
-                              .
+                    echo "Running Trivy filesystem scan..."
 
-                            exit $?
-                        '''
-                    }
-                }
-            }
-        }
+                    trivy fs \
+                      --scanners vuln,secret,misconfig \
+                      --severity HIGH,CRITICAL \
+                      --skip-dirs node_modules \
+                      --skip-dirs frontend/node_modules \
+                      --skip-dirs services/api-gateway/node_modules \
+                      --skip-dirs services/auth-service/node_modules \
+                      --skip-dirs services/users-service/node_modules \
+                      --skip-dirs services/tours-service/node_modules \
+                      --skip-dirs services/bookings-service/node_modules \
+                      --skip-dirs services/reviews-service/node_modules \
+                      --skip-dirs services/blog-service/node_modules \
+                      --skip-dirs services/chat-service/node_modules \
+                      --skip-dirs .git \
+                      --skip-dirs .next \
+                      --skip-dirs dist \
+                      --ignore-unfixed \
+                      --exit-code ${TRIVY_EXIT_CODE} \
+                      .
 
-        stage('SonarQube Quality Gate') {
-            when {
-                allOf {
-                    expression { return params.RUN_SONAR }
-                    expression { return params.WAIT_SONAR_QUALITY_GATE }
-                    expression { return currentBuild.currentResult == 'SUCCESS' }
-                }
-            }
-
-            steps {
-                timeout(time: 5, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: true
-                }
+                    exit $?
+                '''
             }
         }
 
         stage('Build Images') {
-            parallel {
-                stage('Build Batch 1') {
-                    steps {
-                        sh '''
-                            set -eu
+            steps {
+                sh '''
+                    set -eu
 
-                            for SERVICE in api-gateway auth-service users-service; do
-                                echo "Building ${SERVICE}"
+                    build_image() {
+                        SERVICE="$1"
+                        DOCKERFILE="$2"
+                        CONTEXT="$3"
 
-                                docker build \
-                                  --network=host \
-                                  --build-arg NPM_CONFIG_REGISTRY="${NPM_CONFIG_REGISTRY}" \
-                                  --build-arg NPM_CONFIG_FETCH_RETRIES="${NPM_CONFIG_FETCH_RETRIES}" \
-                                  --build-arg NPM_CONFIG_FETCH_RETRY_FACTOR="${NPM_CONFIG_FETCH_RETRY_FACTOR}" \
-                                  --build-arg NPM_CONFIG_FETCH_RETRY_MINTIMEOUT="${NPM_CONFIG_FETCH_RETRY_MINTIMEOUT}" \
-                                  --build-arg NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT="${NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT}" \
-                                  -t ${DOCKERHUB_REPO}/${SERVICE}:${IMAGE_TAG} \
-                                  -f services/${SERVICE}/dockerfile \
-                                  services/${SERVICE}
-                            done
-                        '''
+                        echo "Building ${SERVICE}"
+
+                        docker build \
+                          --network=host \
+                          --build-arg NPM_CONFIG_REGISTRY="${NPM_CONFIG_REGISTRY}" \
+                          --build-arg NPM_CONFIG_FETCH_RETRIES="${NPM_CONFIG_FETCH_RETRIES}" \
+                          --build-arg NPM_CONFIG_FETCH_RETRY_FACTOR="${NPM_CONFIG_FETCH_RETRY_FACTOR}" \
+                          --build-arg NPM_CONFIG_FETCH_RETRY_MINTIMEOUT="${NPM_CONFIG_FETCH_RETRY_MINTIMEOUT}" \
+                          --build-arg NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT="${NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT}" \
+                          -t "${DOCKERHUB_REPO}/${SERVICE}:${IMAGE_TAG}" \
+                          -f "${DOCKERFILE}" \
+                          "${CONTEXT}"
                     }
-                }
 
-                stage('Build Batch 2') {
-                    steps {
-                        sh '''
-                            set -eu
+                    (
+                        set -eu
+                        build_image api-gateway services/api-gateway/dockerfile services/api-gateway
+                        build_image auth-service services/auth-service/dockerfile services/auth-service
+                        build_image users-service services/users-service/dockerfile services/users-service
+                    ) &
+                    PID_1=$!
 
-                            for SERVICE in tours-service bookings-service reviews-service; do
-                                echo "Building ${SERVICE}"
+                    (
+                        set -eu
+                        build_image tours-service services/tours-service/dockerfile services/tours-service
+                        build_image bookings-service services/bookings-service/dockerfile services/bookings-service
+                        build_image reviews-service services/reviews-service/dockerfile services/reviews-service
+                    ) &
+                    PID_2=$!
 
-                                docker build \
-                                  --network=host \
-                                  --build-arg NPM_CONFIG_REGISTRY="${NPM_CONFIG_REGISTRY}" \
-                                  --build-arg NPM_CONFIG_FETCH_RETRIES="${NPM_CONFIG_FETCH_RETRIES}" \
-                                  --build-arg NPM_CONFIG_FETCH_RETRY_FACTOR="${NPM_CONFIG_FETCH_RETRY_FACTOR}" \
-                                  --build-arg NPM_CONFIG_FETCH_RETRY_MINTIMEOUT="${NPM_CONFIG_FETCH_RETRY_MINTIMEOUT}" \
-                                  --build-arg NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT="${NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT}" \
-                                  -t ${DOCKERHUB_REPO}/${SERVICE}:${IMAGE_TAG} \
-                                  -f services/${SERVICE}/dockerfile \
-                                  services/${SERVICE}
-                            done
-                        '''
-                    }
-                }
+                    (
+                        set -eu
+                        build_image blog-service services/blog-service/dockerfile services/blog-service
+                        build_image chat-service services/chat-service/dockerfile services/chat-service
+                        build_image frontend frontend/dockerfile frontend
+                    ) &
+                    PID_3=$!
 
-                stage('Build Batch 3') {
-                    steps {
-                        sh '''
-                            set -eu
+                    FAILED=0
 
-                            for SERVICE in blog-service chat-service; do
-                                echo "Building ${SERVICE}"
+                    wait "$PID_1" || FAILED=1
+                    wait "$PID_2" || FAILED=1
+                    wait "$PID_3" || FAILED=1
 
-                                docker build \
-                                  --network=host \
-                                  --build-arg NPM_CONFIG_REGISTRY="${NPM_CONFIG_REGISTRY}" \
-                                  --build-arg NPM_CONFIG_FETCH_RETRIES="${NPM_CONFIG_FETCH_RETRIES}" \
-                                  --build-arg NPM_CONFIG_FETCH_RETRY_FACTOR="${NPM_CONFIG_FETCH_RETRY_FACTOR}" \
-                                  --build-arg NPM_CONFIG_FETCH_RETRY_MINTIMEOUT="${NPM_CONFIG_FETCH_RETRY_MINTIMEOUT}" \
-                                  --build-arg NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT="${NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT}" \
-                                  -t ${DOCKERHUB_REPO}/${SERVICE}:${IMAGE_TAG} \
-                                  -f services/${SERVICE}/dockerfile \
-                                  services/${SERVICE}
-                            done
+                    if [ "$FAILED" -ne 0 ]; then
+                        echo "One or more image builds failed."
+                        exit 1
+                    fi
 
-                            echo "Building frontend"
-
-                            docker build \
-                              --network=host \
-                              --build-arg NPM_CONFIG_REGISTRY="${NPM_CONFIG_REGISTRY}" \
-                              --build-arg NPM_CONFIG_FETCH_RETRIES="${NPM_CONFIG_FETCH_RETRIES}" \
-                              --build-arg NPM_CONFIG_FETCH_RETRY_FACTOR="${NPM_CONFIG_FETCH_RETRY_FACTOR}" \
-                              --build-arg NPM_CONFIG_FETCH_RETRY_MINTIMEOUT="${NPM_CONFIG_FETCH_RETRY_MINTIMEOUT}" \
-                              --build-arg NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT="${NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT}" \
-                              -t ${DOCKERHUB_REPO}/frontend:${IMAGE_TAG} \
-                              -f frontend/dockerfile \
-                              frontend
-                        '''
-                    }
-                }
+                    echo "All images built successfully."
+                '''
             }
         }
 
         stage('Trivy Image Scan') {
-            parallel {
-                stage('Scan Batch 1') {
-                    steps {
-                        sh '''
-                            set +e
+            steps {
+                sh '''
+                    set -eu
 
-                            for SERVICE in api-gateway auth-service users-service; do
-                                IMAGE="${DOCKERHUB_REPO}/${SERVICE}:${IMAGE_TAG}"
-                                echo "Scanning ${IMAGE}"
+                    scan_image() {
+                        SERVICE="$1"
+                        IMAGE="${DOCKERHUB_REPO}/${SERVICE}:${IMAGE_TAG}"
 
-                                trivy image \
-                                  --severity HIGH,CRITICAL \
-                                  --ignore-unfixed \
-                                  --exit-code ${TRIVY_EXIT_CODE} \
-                                  --timeout 10m \
-                                  "${IMAGE}" || exit $?
-                            done
-                        '''
+                        echo "Scanning ${IMAGE}"
+
+                        trivy image \
+                          --severity HIGH,CRITICAL \
+                          --ignore-unfixed \
+                          --exit-code ${TRIVY_EXIT_CODE} \
+                          --timeout 10m \
+                          "${IMAGE}"
                     }
-                }
 
-                stage('Scan Batch 2') {
-                    steps {
-                        sh '''
-                            set +e
+                    (
+                        set -eu
+                        scan_image api-gateway
+                        scan_image auth-service
+                        scan_image users-service
+                    ) &
+                    PID_1=$!
 
-                            for SERVICE in tours-service bookings-service reviews-service; do
-                                IMAGE="${DOCKERHUB_REPO}/${SERVICE}:${IMAGE_TAG}"
-                                echo "Scanning ${IMAGE}"
+                    (
+                        set -eu
+                        scan_image tours-service
+                        scan_image bookings-service
+                        scan_image reviews-service
+                    ) &
+                    PID_2=$!
 
-                                trivy image \
-                                  --severity HIGH,CRITICAL \
-                                  --ignore-unfixed \
-                                  --exit-code ${TRIVY_EXIT_CODE} \
-                                  --timeout 10m \
-                                  "${IMAGE}" || exit $?
-                            done
-                        '''
-                    }
-                }
+                    (
+                        set -eu
+                        scan_image blog-service
+                        scan_image chat-service
+                        scan_image frontend
+                    ) &
+                    PID_3=$!
 
-                stage('Scan Batch 3') {
-                    steps {
-                        sh '''
-                            set +e
+                    FAILED=0
 
-                            for SERVICE in blog-service chat-service frontend; do
-                                IMAGE="${DOCKERHUB_REPO}/${SERVICE}:${IMAGE_TAG}"
-                                echo "Scanning ${IMAGE}"
+                    wait "$PID_1" || FAILED=1
+                    wait "$PID_2" || FAILED=1
+                    wait "$PID_3" || FAILED=1
 
-                                trivy image \
-                                  --severity HIGH,CRITICAL \
-                                  --ignore-unfixed \
-                                  --exit-code ${TRIVY_EXIT_CODE} \
-                                  --timeout 10m \
-                                  "${IMAGE}" || exit $?
-                            done
-                        '''
-                    }
-                }
+                    if [ "$FAILED" -ne 0 ]; then
+                        echo "One or more Trivy image scans failed."
+                        exit 1
+                    fi
+
+                    echo "All image scans completed."
+                '''
             }
         }
 
@@ -449,16 +394,12 @@ pipeline {
 
                         cd k8s-manifests
 
-                        OVERLAY_FILE="overlays/${TARGET_ENV}/kustomization.yaml"
-
-                        if [ -f "$OVERLAY_FILE" ]; then
-                            echo "Detected Kustomize overlay structure. Updating ${OVERLAY_FILE}"
-
-                            python3 - "$OVERLAY_FILE" "$IMAGE_TAG" <<'PY'
+                        python3 - "${TARGET_ENV}" "${IMAGE_TAG}" <<'PY'
+import re
 import sys
 from pathlib import Path
 
-file_path = Path(sys.argv[1])
+target_env = sys.argv[1]
 image_tag = sys.argv[2]
 
 services = [
@@ -473,48 +414,50 @@ services = [
     "frontend",
 ]
 
-lines = file_path.read_text().splitlines()
-output = []
-current_service = None
+overlay_file = Path(f"overlays/{target_env}/kustomization.yaml")
 
-for line in lines:
-    stripped = line.strip()
+if overlay_file.exists():
+    print(f"Detected Kustomize overlay structure. Updating {overlay_file}")
 
-    if stripped.startswith("- name: mnhat1/"):
-        current_service = stripped.split("mnhat1/", 1)[1].strip()
+    lines = overlay_file.read_text().splitlines()
+    output = []
+    current_service = None
+
+    for line in lines:
+        stripped = line.strip()
+
+        if stripped.startswith("- name: mnhat1/"):
+            current_service = stripped.split("mnhat1/", 1)[1].strip()
+            output.append(line)
+            continue
+
+        if stripped.startswith("newTag:") and current_service in services:
+            indent = line[:len(line) - len(line.lstrip())]
+            output.append(f"{indent}newTag: {image_tag}")
+            current_service = None
+            continue
+
         output.append(line)
-        continue
 
-    if stripped.startswith("newTag:") and current_service in services:
-        indent = line[:len(line) - len(line.lstrip())]
-        output.append(f"{indent}newTag: {image_tag}")
-        current_service = None
-        continue
+    overlay_file.write_text("\\n".join(output) + "\\n")
 
-    output.append(line)
+else:
+    print("Detected old manifest structure. Updating deployment.yaml files directly.")
 
-file_path.write_text("\\n".join(output) + "\\n")
+    for service in services:
+        deployment_file = Path(service) / "deployment.yaml"
+
+        if not deployment_file.exists():
+            raise FileNotFoundError(f"Missing file: {deployment_file}")
+
+        text = deployment_file.read_text()
+        text = re.sub(
+            rf"mnhat1/{service}:[^\\s\\\"']+",
+            f"mnhat1/{service}:{image_tag}",
+            text,
+        )
+        deployment_file.write_text(text)
 PY
-
-                            grep -A1 "name: mnhat1/" "$OVERLAY_FILE"
-
-                        else
-                            echo "Detected old manifest structure. Updating deployment.yaml files directly."
-
-                            for SERVICE in api-gateway auth-service users-service tours-service bookings-service reviews-service blog-service chat-service frontend; do
-                                FILE="${SERVICE}/deployment.yaml"
-
-                                if [ ! -f "$FILE" ]; then
-                                    echo "Missing file: $FILE"
-                                    exit 1
-                                fi
-
-                                sed -i -E "s|mnhat1/${SERVICE}:[^[:space:]\\"']+|mnhat1/${SERVICE}:${IMAGE_TAG}|g" "$FILE"
-
-                                echo "Updated $FILE"
-                                grep -n "image:" "$FILE"
-                            done
-                        fi
 
                         git config user.email "jenkins@example.com"
                         git config user.name "jenkins"
