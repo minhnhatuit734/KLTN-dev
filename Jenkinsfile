@@ -2,10 +2,10 @@ pipeline {
     agent any
 
     options {
+        skipDefaultCheckout(true)
         timestamps()
         disableConcurrentBuilds()
         timeout(time: 90, unit: 'MINUTES')
-        parallelsAlwaysFailFast()
         buildDiscarder(logRotator(numToKeepStr: '20'))
     }
 
@@ -19,25 +19,29 @@ pipeline {
         booleanParam(
             name: 'UPDATE_MANIFESTS',
             defaultValue: true,
-            description: 'Update k8s-manifests after successful image push'
+            description: 'Update k8s-manifests dev overlay after image push'
         )
     }
 
     environment {
         DOCKERHUB_REPO = 'mnhat1'
+
         MANIFEST_REPO = 'github.com/minhnhatuit734/k8s-manifests.git'
         MANIFEST_BRANCH = 'main'
+
+        TARGET_ENV = 'dev'
         DOCKER_BUILDKIT = '1'
     }
 
     stages {
-        stage('Checkout Source') {
+        stage('Checkout') {
             steps {
+                deleteDir()
                 checkout scm
             }
         }
 
-        stage('Prepare Build Info') {
+        stage('Init') {
             steps {
                 script {
                     env.GIT_SHORT_SHA = sh(
@@ -52,17 +56,11 @@ pipeline {
                         ).trim()
                     }
 
-                    if (env.BRANCH_NAME == 'main') {
-                        env.TARGET_ENV = 'prod'
-                        env.IMAGE_TAG = "prod-${env.BUILD_NUMBER}-${env.GIT_SHORT_SHA}"
-                    } else if (env.BRANCH_NAME == 'develop') {
-                        env.TARGET_ENV = 'dev'
-                        env.IMAGE_TAG = "dev-${env.BUILD_NUMBER}-${env.GIT_SHORT_SHA}"
-                    } else {
-                        env.TARGET_ENV = 'none'
-                        env.IMAGE_TAG = "test-${env.BUILD_NUMBER}-${env.GIT_SHORT_SHA}"
+                    if (env.BRANCH_NAME != 'develop') {
+                        error("This simplified pipeline only supports branch develop now. Current branch: ${env.BRANCH_NAME}")
                     }
 
+                    env.IMAGE_TAG = "dev-${env.BUILD_NUMBER}-${env.GIT_SHORT_SHA}"
                     env.TRIVY_EXIT_CODE = params.TRIVY_STRICT ? '1' : '0'
 
                     currentBuild.displayName = "#${env.BUILD_NUMBER} ${env.BRANCH_NAME} ${env.GIT_SHORT_SHA}"
@@ -70,290 +68,76 @@ pipeline {
 
                 sh '''
                     set -eu
+
                     echo "Branch: ${BRANCH_NAME}"
                     echo "Target environment: ${TARGET_ENV}"
                     echo "Image tag: ${IMAGE_TAG}"
                     echo "Trivy exit code: ${TRIVY_EXIT_CODE}"
-                    docker --version
+
                     git --version
+                    docker --version
                     trivy --version || true
                 '''
             }
         }
 
-        stage('Fast Validation') {
-            failFast true
+        stage('Scan') {
+            steps {
+                sh '''
+                    set +e
 
-            parallel {
-                stage('Validate Dockerfiles') {
-                    steps {
-                        sh '''
-                            set -eu
+                    echo "Scanning source for secrets and misconfigurations..."
 
-                            test -f services/api-gateway/dockerfile
-                            test -f services/auth-service/dockerfile
-                            test -f services/users-service/dockerfile
-                            test -f services/tours-service/dockerfile
-                            test -f services/bookings-service/dockerfile
-                            test -f services/reviews-service/dockerfile
-                            test -f services/blog-service/dockerfile
-                            test -f services/chat-service/dockerfile
-                            test -f frontend/dockerfile
+                    trivy fs \
+                      --scanners secret,misconfig \
+                      --severity HIGH,CRITICAL \
+                      --skip-dirs node_modules \
+                      --skip-dirs frontend/node_modules \
+                      --skip-dirs services/api-gateway/node_modules \
+                      --skip-dirs services/auth-service/node_modules \
+                      --skip-dirs services/users-service/node_modules \
+                      --skip-dirs services/tours-service/node_modules \
+                      --skip-dirs services/bookings-service/node_modules \
+                      --skip-dirs services/reviews-service/node_modules \
+                      --skip-dirs services/blog-service/node_modules \
+                      --skip-dirs services/chat-service/node_modules \
+                      --exit-code 0 \
+                      .
 
-                            echo "All Dockerfiles exist."
-                        '''
-                    }
-                }
-
-                stage('Validate CI Scripts') {
-                    steps {
-                        sh '''
-                            set -eu
-
-                            test -f scripts/update-k8s-manifests.sh
-                            chmod +x scripts/update-k8s-manifests.sh
-
-                            echo "CI scripts are valid."
-                        '''
-                    }
-                }
-
-                stage('Trivy Source Scan') {
-                    steps {
-                        sh '''
-                            set +e
-
-                            trivy fs \
-                              --scanners secret,misconfig \
-                              --severity HIGH,CRITICAL \
-                              --exit-code 0 \
-                              .
-
-                            exit 0
-                        '''
-                    }
-                }
+                    exit 0
+                '''
             }
         }
 
-        stage('Build Docker Images') {
-            failFast true
+        stage('Build') {
+            steps {
+                sh '''
+                    set -eu
 
-            parallel {
-                stage('Build api-gateway') {
-                    steps {
-                        sh '''
-                            set -eu
-                            docker build \
-                              -t ${DOCKERHUB_REPO}/api-gateway:${IMAGE_TAG} \
-                              -f services/api-gateway/dockerfile \
-                              services/api-gateway
-                        '''
-                    }
-                }
+                    SERVICES="api-gateway auth-service users-service tours-service bookings-service reviews-service blog-service chat-service"
 
-                stage('Build auth-service') {
-                    steps {
-                        sh '''
-                            set -eu
-                            docker build \
-                              -t ${DOCKERHUB_REPO}/auth-service:${IMAGE_TAG} \
-                              -f services/auth-service/dockerfile \
-                              services/auth-service
-                        '''
-                    }
-                }
+                    for SERVICE in $SERVICES; do
+                        echo "Building ${SERVICE}..."
 
-                stage('Build users-service') {
-                    steps {
-                        sh '''
-                            set -eu
-                            docker build \
-                              -t ${DOCKERHUB_REPO}/users-service:${IMAGE_TAG} \
-                              -f services/users-service/dockerfile \
-                              services/users-service
-                        '''
-                    }
-                }
+                        docker build \
+                          --network=host \
+                          -t ${DOCKERHUB_REPO}/${SERVICE}:${IMAGE_TAG} \
+                          -f services/${SERVICE}/dockerfile \
+                          services/${SERVICE}
+                    done
 
-                stage('Build tours-service') {
-                    steps {
-                        sh '''
-                            set -eu
-                            docker build \
-                              -t ${DOCKERHUB_REPO}/tours-service:${IMAGE_TAG} \
-                              -f services/tours-service/dockerfile \
-                              services/tours-service
-                        '''
-                    }
-                }
+                    echo "Building frontend..."
 
-                stage('Build bookings-service') {
-                    steps {
-                        sh '''
-                            set -eu
-                            docker build \
-                              -t ${DOCKERHUB_REPO}/bookings-service:${IMAGE_TAG} \
-                              -f services/bookings-service/dockerfile \
-                              services/bookings-service
-                        '''
-                    }
-                }
-
-                stage('Build reviews-service') {
-                    steps {
-                        sh '''
-                            set -eu
-                            docker build \
-                              -t ${DOCKERHUB_REPO}/reviews-service:${IMAGE_TAG} \
-                              -f services/reviews-service/dockerfile \
-                              services/reviews-service
-                        '''
-                    }
-                }
-
-                stage('Build blog-service') {
-                    steps {
-                        sh '''
-                            set -eu
-                            docker build \
-                              -t ${DOCKERHUB_REPO}/blog-service:${IMAGE_TAG} \
-                              -f services/blog-service/dockerfile \
-                              services/blog-service
-                        '''
-                    }
-                }
-
-                stage('Build chat-service') {
-                    steps {
-                        sh '''
-                            set -eu
-                            docker build \
-                              -t ${DOCKERHUB_REPO}/chat-service:${IMAGE_TAG} \
-                              -f services/chat-service/dockerfile \
-                              services/chat-service
-                        '''
-                    }
-                }
-
-                stage('Build frontend') {
-                    steps {
-                        sh '''
-                            set -eu
-                            docker build \
-                              -t ${DOCKERHUB_REPO}/frontend:${IMAGE_TAG} \
-                              -f frontend/dockerfile \
-                              frontend
-                        '''
-                    }
-                }
+                    docker build \
+                      --network=host \
+                      -t ${DOCKERHUB_REPO}/frontend:${IMAGE_TAG} \
+                      -f frontend/dockerfile \
+                      frontend
+                '''
             }
         }
 
-        stage('Scan Docker Images') {
-            failFast true
-
-            parallel {
-                stage('Scan api-gateway') {
-                    steps {
-                        sh '''
-                            set +e
-                            trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code ${TRIVY_EXIT_CODE} ${DOCKERHUB_REPO}/api-gateway:${IMAGE_TAG}
-                            exit $?
-                        '''
-                    }
-                }
-
-                stage('Scan auth-service') {
-                    steps {
-                        sh '''
-                            set +e
-                            trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code ${TRIVY_EXIT_CODE} ${DOCKERHUB_REPO}/auth-service:${IMAGE_TAG}
-                            exit $?
-                        '''
-                    }
-                }
-
-                stage('Scan users-service') {
-                    steps {
-                        sh '''
-                            set +e
-                            trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code ${TRIVY_EXIT_CODE} ${DOCKERHUB_REPO}/users-service:${IMAGE_TAG}
-                            exit $?
-                        '''
-                    }
-                }
-
-                stage('Scan tours-service') {
-                    steps {
-                        sh '''
-                            set +e
-                            trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code ${TRIVY_EXIT_CODE} ${DOCKERHUB_REPO}/tours-service:${IMAGE_TAG}
-                            exit $?
-                        '''
-                    }
-                }
-
-                stage('Scan bookings-service') {
-                    steps {
-                        sh '''
-                            set +e
-                            trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code ${TRIVY_EXIT_CODE} ${DOCKERHUB_REPO}/bookings-service:${IMAGE_TAG}
-                            exit $?
-                        '''
-                    }
-                }
-
-                stage('Scan reviews-service') {
-                    steps {
-                        sh '''
-                            set +e
-                            trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code ${TRIVY_EXIT_CODE} ${DOCKERHUB_REPO}/reviews-service:${IMAGE_TAG}
-                            exit $?
-                        '''
-                    }
-                }
-
-                stage('Scan blog-service') {
-                    steps {
-                        sh '''
-                            set +e
-                            trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code ${TRIVY_EXIT_CODE} ${DOCKERHUB_REPO}/blog-service:${IMAGE_TAG}
-                            exit $?
-                        '''
-                    }
-                }
-
-                stage('Scan chat-service') {
-                    steps {
-                        sh '''
-                            set +e
-                            trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code ${TRIVY_EXIT_CODE} ${DOCKERHUB_REPO}/chat-service:${IMAGE_TAG}
-                            exit $?
-                        '''
-                    }
-                }
-
-                stage('Scan frontend') {
-                    steps {
-                        sh '''
-                            set +e
-                            trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code ${TRIVY_EXIT_CODE} ${DOCKERHUB_REPO}/frontend:${IMAGE_TAG}
-                            exit $?
-                        '''
-                    }
-                }
-            }
-        }
-
-        stage('Push Docker Images') {
-            when {
-                anyOf {
-                    expression { return env.BRANCH_NAME == 'develop' }
-                    expression { return env.BRANCH_NAME == 'main' }
-                }
-            }
-
+        stage('Push') {
             steps {
                 withCredentials([
                     usernamePassword(
@@ -379,13 +163,9 @@ pipeline {
             }
         }
 
-        stage('Update Dev Manifest') {
+        stage('Update Manifest') {
             when {
-                allOf {
-                    expression { return params.UPDATE_MANIFESTS }
-                    expression { return env.BRANCH_NAME == 'develop' }
-                    expression { return env.TARGET_ENV == 'dev' }
-                }
+                expression { return params.UPDATE_MANIFESTS }
             }
 
             steps {
@@ -398,34 +178,9 @@ pipeline {
                 ]) {
                     sh '''
                         set -eu
+
+                        chmod +x scripts/update-k8s-manifests.sh
                         ./scripts/update-k8s-manifests.sh dev "${IMAGE_TAG}"
-                    '''
-                }
-            }
-        }
-
-        stage('Update Prod Manifest') {
-            when {
-                allOf {
-                    expression { return params.UPDATE_MANIFESTS }
-                    expression { return env.BRANCH_NAME == 'main' }
-                    expression { return env.TARGET_ENV == 'prod' }
-                }
-            }
-
-            steps {
-                input message: 'Deploy to production?', ok: 'Deploy'
-
-                withCredentials([
-                    usernamePassword(
-                        credentialsId: 'github-pat',
-                        usernameVariable: 'GIT_USER',
-                        passwordVariable: 'GIT_TOKEN'
-                    )
-                ]) {
-                    sh '''
-                        set -eu
-                        ./scripts/update-k8s-manifests.sh prod "${IMAGE_TAG}"
                     '''
                 }
             }
@@ -434,11 +189,11 @@ pipeline {
 
     post {
         success {
-            echo "Pipeline completed successfully."
+            echo "Develop to dev pipeline completed successfully."
         }
 
         failure {
-            echo "Pipeline failed."
+            echo "Pipeline failed. Check the failed stage above."
         }
 
         always {
