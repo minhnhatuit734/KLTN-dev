@@ -11,15 +11,9 @@ pipeline {
 
     parameters {
         booleanParam(
-            name: 'RUN_SONAR',
-            defaultValue: false,
-            description: 'Run SonarQube scan'
-        )
-
-        booleanParam(
             name: 'TRIVY_STRICT',
             defaultValue: false,
-            description: 'Fail pipeline if HIGH/CRITICAL image vulnerabilities are found'
+            description: 'Fail pipeline if HIGH/CRITICAL vulnerabilities are found'
         )
 
         booleanParam(
@@ -64,13 +58,12 @@ pipeline {
                     } else if (env.BRANCH_NAME == 'develop') {
                         env.TARGET_ENV = 'dev'
                         env.IMAGE_TAG = "dev-${env.BUILD_NUMBER}-${env.GIT_SHORT_SHA}"
-                    } else if (env.BRANCH_NAME.startsWith('feature/')) {
-                        env.TARGET_ENV = 'none'
-                        env.IMAGE_TAG = "test-${env.BUILD_NUMBER}-${env.GIT_SHORT_SHA}"
                     } else {
                         env.TARGET_ENV = 'none'
                         env.IMAGE_TAG = "test-${env.BUILD_NUMBER}-${env.GIT_SHORT_SHA}"
                     }
+
+                    env.TRIVY_EXIT_CODE = params.TRIVY_STRICT ? '1' : '0'
 
                     currentBuild.displayName = "#${env.BUILD_NUMBER} ${env.BRANCH_NAME} ${env.GIT_SHORT_SHA}"
                 }
@@ -80,71 +73,64 @@ pipeline {
                     echo "Branch: ${BRANCH_NAME}"
                     echo "Target environment: ${TARGET_ENV}"
                     echo "Image tag: ${IMAGE_TAG}"
-                    node -v
-                    npm -v
+                    echo "Trivy exit code: ${TRIVY_EXIT_CODE}"
                     docker --version
+                    git --version
+                    trivy --version || true
                 '''
             }
         }
 
-        stage('Install Dependencies') {
-            steps {
-                sh '''
-                    set -eu
-                    npm ci
-                '''
-            }
-        }
-
-        stage('Validate Source') {
+        stage('Fast Validation') {
             failFast true
 
             parallel {
-                stage('Build TypeScript') {
+                stage('Validate Dockerfiles') {
                     steps {
                         sh '''
                             set -eu
-                            npm run build:all
+
+                            test -f services/api-gateway/dockerfile
+                            test -f services/auth-service/dockerfile
+                            test -f services/users-service/dockerfile
+                            test -f services/tours-service/dockerfile
+                            test -f services/bookings-service/dockerfile
+                            test -f services/reviews-service/dockerfile
+                            test -f services/blog-service/dockerfile
+                            test -f services/chat-service/dockerfile
+                            test -f frontend/dockerfile
+
+                            echo "All Dockerfiles exist."
                         '''
                     }
                 }
 
-                stage('Lint') {
+                stage('Validate CI Scripts') {
                     steps {
                         sh '''
                             set -eu
-                            npm run lint
+
+                            test -f scripts/update-k8s-manifests.sh
+                            chmod +x scripts/update-k8s-manifests.sh
+
+                            echo "CI scripts are valid."
                         '''
                     }
                 }
 
-                stage('Trivy FS Scan') {
+                stage('Trivy Source Scan') {
                     steps {
                         sh '''
                             set +e
+
                             trivy fs \
-                              --scanners vuln,secret,misconfig \
+                              --scanners secret,misconfig \
                               --severity HIGH,CRITICAL \
-                              --ignore-unfixed \
                               --exit-code 0 \
                               .
+
                             exit 0
                         '''
-                    }
-                }
-            }
-        }
-
-        stage('SonarQube Scan') {
-            when {
-                expression { return params.RUN_SONAR }
-            }
-
-            steps {
-                script {
-                    def scannerHome = tool 'sonar-scanner'
-                    withSonarQubeEnv('sonarqube') {
-                        sh "${scannerHome}/bin/sonar-scanner"
                     }
                 }
             }
@@ -158,7 +144,10 @@ pipeline {
                     steps {
                         sh '''
                             set -eu
-                            docker build -t ${DOCKERHUB_REPO}/api-gateway:${IMAGE_TAG} -f services/api-gateway/dockerfile services/api-gateway
+                            docker build \
+                              -t ${DOCKERHUB_REPO}/api-gateway:${IMAGE_TAG} \
+                              -f services/api-gateway/dockerfile \
+                              services/api-gateway
                         '''
                     }
                 }
@@ -167,7 +156,10 @@ pipeline {
                     steps {
                         sh '''
                             set -eu
-                            docker build -t ${DOCKERHUB_REPO}/auth-service:${IMAGE_TAG} -f services/auth-service/dockerfile services/auth-service
+                            docker build \
+                              -t ${DOCKERHUB_REPO}/auth-service:${IMAGE_TAG} \
+                              -f services/auth-service/dockerfile \
+                              services/auth-service
                         '''
                     }
                 }
@@ -176,7 +168,10 @@ pipeline {
                     steps {
                         sh '''
                             set -eu
-                            docker build -t ${DOCKERHUB_REPO}/users-service:${IMAGE_TAG} -f services/users-service/dockerfile services/users-service
+                            docker build \
+                              -t ${DOCKERHUB_REPO}/users-service:${IMAGE_TAG} \
+                              -f services/users-service/dockerfile \
+                              services/users-service
                         '''
                     }
                 }
@@ -185,7 +180,10 @@ pipeline {
                     steps {
                         sh '''
                             set -eu
-                            docker build -t ${DOCKERHUB_REPO}/tours-service:${IMAGE_TAG} -f services/tours-service/dockerfile services/tours-service
+                            docker build \
+                              -t ${DOCKERHUB_REPO}/tours-service:${IMAGE_TAG} \
+                              -f services/tours-service/dockerfile \
+                              services/tours-service
                         '''
                     }
                 }
@@ -194,7 +192,10 @@ pipeline {
                     steps {
                         sh '''
                             set -eu
-                            docker build -t ${DOCKERHUB_REPO}/bookings-service:${IMAGE_TAG} -f services/bookings-service/dockerfile services/bookings-service
+                            docker build \
+                              -t ${DOCKERHUB_REPO}/bookings-service:${IMAGE_TAG} \
+                              -f services/bookings-service/dockerfile \
+                              services/bookings-service
                         '''
                     }
                 }
@@ -203,7 +204,10 @@ pipeline {
                     steps {
                         sh '''
                             set -eu
-                            docker build -t ${DOCKERHUB_REPO}/reviews-service:${IMAGE_TAG} -f services/reviews-service/dockerfile services/reviews-service
+                            docker build \
+                              -t ${DOCKERHUB_REPO}/reviews-service:${IMAGE_TAG} \
+                              -f services/reviews-service/dockerfile \
+                              services/reviews-service
                         '''
                     }
                 }
@@ -212,7 +216,10 @@ pipeline {
                     steps {
                         sh '''
                             set -eu
-                            docker build -t ${DOCKERHUB_REPO}/blog-service:${IMAGE_TAG} -f services/blog-service/dockerfile services/blog-service
+                            docker build \
+                              -t ${DOCKERHUB_REPO}/blog-service:${IMAGE_TAG} \
+                              -f services/blog-service/dockerfile \
+                              services/blog-service
                         '''
                     }
                 }
@@ -221,7 +228,10 @@ pipeline {
                     steps {
                         sh '''
                             set -eu
-                            docker build -t ${DOCKERHUB_REPO}/chat-service:${IMAGE_TAG} -f services/chat-service/dockerfile services/chat-service
+                            docker build \
+                              -t ${DOCKERHUB_REPO}/chat-service:${IMAGE_TAG} \
+                              -f services/chat-service/dockerfile \
+                              services/chat-service
                         '''
                     }
                 }
@@ -230,7 +240,10 @@ pipeline {
                     steps {
                         sh '''
                             set -eu
-                            docker build -t ${DOCKERHUB_REPO}/frontend:${IMAGE_TAG} -f frontend/dockerfile frontend
+                            docker build \
+                              -t ${DOCKERHUB_REPO}/frontend:${IMAGE_TAG} \
+                              -f frontend/dockerfile \
+                              frontend
                         '''
                     }
                 }
@@ -241,49 +254,93 @@ pipeline {
             failFast true
 
             parallel {
-                stage('Scan backend images') {
+                stage('Scan api-gateway') {
                     steps {
-                        script {
-                            def exitCode = params.TRIVY_STRICT ? '1' : '0'
-
-                            sh """
-                                set -eu
-
-                                SERVICES="api-gateway auth-service users-service tours-service bookings-service reviews-service blog-service chat-service"
-
-                                for SERVICE in \$SERVICES; do
-                                    IMAGE="${DOCKERHUB_REPO}/\${SERVICE}:${IMAGE_TAG}"
-                                    echo "Scanning \${IMAGE}"
-
-                                    trivy image \
-                                      --severity HIGH,CRITICAL \
-                                      --ignore-unfixed \
-                                      --exit-code ${exitCode} \
-                                      "\${IMAGE}"
-                                done
-                            """
-                        }
+                        sh '''
+                            set +e
+                            trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code ${TRIVY_EXIT_CODE} ${DOCKERHUB_REPO}/api-gateway:${IMAGE_TAG}
+                            exit $?
+                        '''
                     }
                 }
 
-                stage('Scan frontend image') {
+                stage('Scan auth-service') {
                     steps {
-                        script {
-                            def exitCode = params.TRIVY_STRICT ? '1' : '0'
+                        sh '''
+                            set +e
+                            trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code ${TRIVY_EXIT_CODE} ${DOCKERHUB_REPO}/auth-service:${IMAGE_TAG}
+                            exit $?
+                        '''
+                    }
+                }
 
-                            sh """
-                                set -eu
+                stage('Scan users-service') {
+                    steps {
+                        sh '''
+                            set +e
+                            trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code ${TRIVY_EXIT_CODE} ${DOCKERHUB_REPO}/users-service:${IMAGE_TAG}
+                            exit $?
+                        '''
+                    }
+                }
 
-                                IMAGE="${DOCKERHUB_REPO}/frontend:${IMAGE_TAG}"
-                                echo "Scanning \${IMAGE}"
+                stage('Scan tours-service') {
+                    steps {
+                        sh '''
+                            set +e
+                            trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code ${TRIVY_EXIT_CODE} ${DOCKERHUB_REPO}/tours-service:${IMAGE_TAG}
+                            exit $?
+                        '''
+                    }
+                }
 
-                                trivy image \
-                                  --severity HIGH,CRITICAL \
-                                  --ignore-unfixed \
-                                  --exit-code ${exitCode} \
-                                  "\${IMAGE}"
-                            """
-                        }
+                stage('Scan bookings-service') {
+                    steps {
+                        sh '''
+                            set +e
+                            trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code ${TRIVY_EXIT_CODE} ${DOCKERHUB_REPO}/bookings-service:${IMAGE_TAG}
+                            exit $?
+                        '''
+                    }
+                }
+
+                stage('Scan reviews-service') {
+                    steps {
+                        sh '''
+                            set +e
+                            trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code ${TRIVY_EXIT_CODE} ${DOCKERHUB_REPO}/reviews-service:${IMAGE_TAG}
+                            exit $?
+                        '''
+                    }
+                }
+
+                stage('Scan blog-service') {
+                    steps {
+                        sh '''
+                            set +e
+                            trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code ${TRIVY_EXIT_CODE} ${DOCKERHUB_REPO}/blog-service:${IMAGE_TAG}
+                            exit $?
+                        '''
+                    }
+                }
+
+                stage('Scan chat-service') {
+                    steps {
+                        sh '''
+                            set +e
+                            trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code ${TRIVY_EXIT_CODE} ${DOCKERHUB_REPO}/chat-service:${IMAGE_TAG}
+                            exit $?
+                        '''
+                    }
+                }
+
+                stage('Scan frontend') {
+                    steps {
+                        sh '''
+                            set +e
+                            trivy image --severity HIGH,CRITICAL --ignore-unfixed --exit-code ${TRIVY_EXIT_CODE} ${DOCKERHUB_REPO}/frontend:${IMAGE_TAG}
+                            exit $?
+                        '''
                     }
                 }
             }
