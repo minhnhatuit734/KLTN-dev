@@ -51,7 +51,7 @@ pipeline {
 
         DOCKER_BUILDKIT = '1'
 
-        SONAR_SCANNER_TOOL = 'SonarScanner'
+        SONAR_SCANNER_TOOL = 'sonar-scanner'
 
         NPM_CONFIG_REGISTRY = 'https://registry.npmjs.org/'
         NPM_CONFIG_FETCH_RETRIES = '5'
