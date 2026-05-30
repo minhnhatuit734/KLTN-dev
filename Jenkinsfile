@@ -5,15 +5,27 @@ pipeline {
         skipDefaultCheckout(true)
         timestamps()
         disableConcurrentBuilds()
-        timeout(time: 90, unit: 'MINUTES')
+        timeout(time: 120, unit: 'MINUTES')
         buildDiscarder(logRotator(numToKeepStr: '20'))
     }
 
     parameters {
         booleanParam(
+            name: 'RUN_SONAR',
+            defaultValue: true,
+            description: 'Run SonarQube source code analysis'
+        )
+
+        booleanParam(
+            name: 'WAIT_SONAR_QUALITY_GATE',
+            defaultValue: false,
+            description: 'Wait for SonarQube Quality Gate result'
+        )
+
+        booleanParam(
             name: 'TRIVY_STRICT',
             defaultValue: false,
-            description: 'Fail pipeline if HIGH/CRITICAL vulnerabilities are found'
+            description: 'Fail pipeline if Trivy finds HIGH/CRITICAL vulnerabilities'
         )
 
         booleanParam(
@@ -31,6 +43,15 @@ pipeline {
 
         TARGET_ENV = 'dev'
         DOCKER_BUILDKIT = '1'
+
+        SONARQUBE_SERVER = 'sonarqube'
+        SONAR_SCANNER_TOOL = 'sonar-scanner'
+
+        NPM_CONFIG_FETCH_RETRIES = '5'
+        NPM_CONFIG_FETCH_RETRY_FACTOR = '2'
+        NPM_CONFIG_FETCH_RETRY_MINTIMEOUT = '20000'
+        NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT = '120000'
+        NPM_CONFIG_REGISTRY = 'https://registry.npmjs.org/'
     }
 
     stages {
@@ -57,7 +78,7 @@ pipeline {
                     }
 
                     if (env.BRANCH_NAME != 'develop') {
-                        error("This simplified pipeline only supports branch develop now. Current branch: ${env.BRANCH_NAME}")
+                        error("Pipeline hiện tại chỉ cho branch develop. Current branch: ${env.BRANCH_NAME}")
                     }
 
                     env.IMAGE_TAG = "dev-${env.BUILD_NUMBER}-${env.GIT_SHORT_SHA}"
@@ -81,59 +102,224 @@ pipeline {
             }
         }
 
-        stage('Scan') {
+        stage('Quality Scan') {
+            parallel {
+                stage('SonarQube') {
+                    when {
+                        expression { return params.RUN_SONAR }
+                    }
+
+                    steps {
+                        script {
+                            def scannerHome = tool "${SONAR_SCANNER_TOOL}"
+
+                            withSonarQubeEnv("${SONARQUBE_SERVER}") {
+                                sh """
+                                    set -eu
+
+                                    ${scannerHome}/bin/sonar-scanner \
+                                      -Dsonar.projectKey=KLTN-dev \
+                                      -Dsonar.projectName=KLTN-dev \
+                                      -Dsonar.sources=. \
+                                      -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/.next/**,**/coverage/**,**/k8s-manifests/** \
+                                      -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+                                """
+                            }
+                        }
+                    }
+                }
+
+                stage('Trivy FS') {
+                    steps {
+                        sh '''
+                            set +e
+
+                            trivy fs \
+                              --scanners vuln,secret,misconfig \
+                              --severity HIGH,CRITICAL \
+                              --skip-dirs node_modules \
+                              --skip-dirs frontend/node_modules \
+                              --skip-dirs services/api-gateway/node_modules \
+                              --skip-dirs services/auth-service/node_modules \
+                              --skip-dirs services/users-service/node_modules \
+                              --skip-dirs services/tours-service/node_modules \
+                              --skip-dirs services/bookings-service/node_modules \
+                              --skip-dirs services/reviews-service/node_modules \
+                              --skip-dirs services/blog-service/node_modules \
+                              --skip-dirs services/chat-service/node_modules \
+                              --skip-dirs .git \
+                              --skip-dirs .next \
+                              --skip-dirs dist \
+                              --ignore-unfixed \
+                              --exit-code ${TRIVY_EXIT_CODE} \
+                              .
+
+                            exit $?
+                        '''
+                    }
+                }
+            }
+        }
+
+        stage('SonarQube Quality Gate') {
+            when {
+                allOf {
+                    expression { return params.RUN_SONAR }
+                    expression { return params.WAIT_SONAR_QUALITY_GATE }
+                }
+            }
+
             steps {
-                sh '''
-                    set +e
-
-                    echo "Scanning source for secrets and misconfigurations..."
-
-                    trivy fs \
-                      --scanners secret,misconfig \
-                      --severity HIGH,CRITICAL \
-                      --skip-dirs node_modules \
-                      --skip-dirs frontend/node_modules \
-                      --skip-dirs services/api-gateway/node_modules \
-                      --skip-dirs services/auth-service/node_modules \
-                      --skip-dirs services/users-service/node_modules \
-                      --skip-dirs services/tours-service/node_modules \
-                      --skip-dirs services/bookings-service/node_modules \
-                      --skip-dirs services/reviews-service/node_modules \
-                      --skip-dirs services/blog-service/node_modules \
-                      --skip-dirs services/chat-service/node_modules \
-                      --exit-code 0 \
-                      .
-
-                    exit 0
-                '''
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: true
+                }
             }
         }
 
         stage('Build') {
-            steps {
-                sh '''
-                    set -eu
+            parallel {
+                stage('Build Batch 1') {
+                    steps {
+                        sh '''
+                            set -eu
 
-                    SERVICES="api-gateway auth-service users-service tours-service bookings-service reviews-service blog-service chat-service"
+                            for SERVICE in api-gateway auth-service users-service; do
+                                echo "Building ${SERVICE}"
 
-                    for SERVICE in $SERVICES; do
-                        echo "Building ${SERVICE}..."
+                                docker build \
+                                  --network=host \
+                                  --build-arg NPM_CONFIG_REGISTRY="${NPM_CONFIG_REGISTRY}" \
+                                  --build-arg NPM_CONFIG_FETCH_RETRIES="${NPM_CONFIG_FETCH_RETRIES}" \
+                                  --build-arg NPM_CONFIG_FETCH_RETRY_FACTOR="${NPM_CONFIG_FETCH_RETRY_FACTOR}" \
+                                  --build-arg NPM_CONFIG_FETCH_RETRY_MINTIMEOUT="${NPM_CONFIG_FETCH_RETRY_MINTIMEOUT}" \
+                                  --build-arg NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT="${NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT}" \
+                                  -t ${DOCKERHUB_REPO}/${SERVICE}:${IMAGE_TAG} \
+                                  -f services/${SERVICE}/dockerfile \
+                                  services/${SERVICE}
+                            done
+                        '''
+                    }
+                }
 
-                        docker build \
-                          --network=host \
-                          -t ${DOCKERHUB_REPO}/${SERVICE}:${IMAGE_TAG} \
-                          -f services/${SERVICE}/dockerfile \
-                          services/${SERVICE}
-                    done
+                stage('Build Batch 2') {
+                    steps {
+                        sh '''
+                            set -eu
 
-                    echo "Building frontend..."
+                            for SERVICE in tours-service bookings-service reviews-service; do
+                                echo "Building ${SERVICE}"
 
-                    docker build \
-                      --network=host \
-                      -t ${DOCKERHUB_REPO}/frontend:${IMAGE_TAG} \
-                      -f frontend/dockerfile \
-                      frontend
-                '''
+                                docker build \
+                                  --network=host \
+                                  --build-arg NPM_CONFIG_REGISTRY="${NPM_CONFIG_REGISTRY}" \
+                                  --build-arg NPM_CONFIG_FETCH_RETRIES="${NPM_CONFIG_FETCH_RETRIES}" \
+                                  --build-arg NPM_CONFIG_FETCH_RETRY_FACTOR="${NPM_CONFIG_FETCH_RETRY_FACTOR}" \
+                                  --build-arg NPM_CONFIG_FETCH_RETRY_MINTIMEOUT="${NPM_CONFIG_FETCH_RETRY_MINTIMEOUT}" \
+                                  --build-arg NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT="${NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT}" \
+                                  -t ${DOCKERHUB_REPO}/${SERVICE}:${IMAGE_TAG} \
+                                  -f services/${SERVICE}/dockerfile \
+                                  services/${SERVICE}
+                            done
+                        '''
+                    }
+                }
+
+                stage('Build Batch 3') {
+                    steps {
+                        sh '''
+                            set -eu
+
+                            for SERVICE in blog-service chat-service; do
+                                echo "Building ${SERVICE}"
+
+                                docker build \
+                                  --network=host \
+                                  --build-arg NPM_CONFIG_REGISTRY="${NPM_CONFIG_REGISTRY}" \
+                                  --build-arg NPM_CONFIG_FETCH_RETRIES="${NPM_CONFIG_FETCH_RETRIES}" \
+                                  --build-arg NPM_CONFIG_FETCH_RETRY_FACTOR="${NPM_CONFIG_FETCH_RETRY_FACTOR}" \
+                                  --build-arg NPM_CONFIG_FETCH_RETRY_MINTIMEOUT="${NPM_CONFIG_FETCH_RETRY_MINTIMEOUT}" \
+                                  --build-arg NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT="${NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT}" \
+                                  -t ${DOCKERHUB_REPO}/${SERVICE}:${IMAGE_TAG} \
+                                  -f services/${SERVICE}/dockerfile \
+                                  services/${SERVICE}
+                            done
+
+                            echo "Building frontend"
+
+                            docker build \
+                              --network=host \
+                              --build-arg NPM_CONFIG_REGISTRY="${NPM_CONFIG_REGISTRY}" \
+                              --build-arg NPM_CONFIG_FETCH_RETRIES="${NPM_CONFIG_FETCH_RETRIES}" \
+                              --build-arg NPM_CONFIG_FETCH_RETRY_FACTOR="${NPM_CONFIG_FETCH_RETRY_FACTOR}" \
+                              --build-arg NPM_CONFIG_FETCH_RETRY_MINTIMEOUT="${NPM_CONFIG_FETCH_RETRY_MINTIMEOUT}" \
+                              --build-arg NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT="${NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT}" \
+                              -t ${DOCKERHUB_REPO}/frontend:${IMAGE_TAG} \
+                              -f frontend/dockerfile \
+                              frontend
+                        '''
+                    }
+                }
+            }
+        }
+
+        stage('Image Scan') {
+            parallel {
+                stage('Image Scan Batch 1') {
+                    steps {
+                        sh '''
+                            set +e
+
+                            for SERVICE in api-gateway auth-service users-service; do
+                                IMAGE="${DOCKERHUB_REPO}/${SERVICE}:${IMAGE_TAG}"
+                                echo "Scanning ${IMAGE}"
+
+                                trivy image \
+                                  --severity HIGH,CRITICAL \
+                                  --ignore-unfixed \
+                                  --exit-code ${TRIVY_EXIT_CODE} \
+                                  "${IMAGE}" || exit $?
+                            done
+                        '''
+                    }
+                }
+
+                stage('Image Scan Batch 2') {
+                    steps {
+                        sh '''
+                            set +e
+
+                            for SERVICE in tours-service bookings-service reviews-service; do
+                                IMAGE="${DOCKERHUB_REPO}/${SERVICE}:${IMAGE_TAG}"
+                                echo "Scanning ${IMAGE}"
+
+                                trivy image \
+                                  --severity HIGH,CRITICAL \
+                                  --ignore-unfixed \
+                                  --exit-code ${TRIVY_EXIT_CODE} \
+                                  "${IMAGE}" || exit $?
+                            done
+                        '''
+                    }
+                }
+
+                stage('Image Scan Batch 3') {
+                    steps {
+                        sh '''
+                            set +e
+
+                            for SERVICE in blog-service chat-service frontend; do
+                                IMAGE="${DOCKERHUB_REPO}/${SERVICE}:${IMAGE_TAG}"
+                                echo "Scanning ${IMAGE}"
+
+                                trivy image \
+                                  --severity HIGH,CRITICAL \
+                                  --ignore-unfixed \
+                                  --exit-code ${TRIVY_EXIT_CODE} \
+                                  "${IMAGE}" || exit $?
+                            done
+                        '''
+                    }
+                }
             }
         }
 
