@@ -1,20 +1,36 @@
+# syntax=docker/dockerfile:1.6
+
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+ARG NPM_CONFIG_REGISTRY=https://registry.npmjs.org/
+ARG NPM_CONFIG_FETCH_RETRIES=5
+ARG NPM_CONFIG_FETCH_RETRY_FACTOR=2
+ARG NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=20000
+ARG NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=120000
+
+ENV NPM_CONFIG_REGISTRY=${NPM_CONFIG_REGISTRY}
+ENV NPM_CONFIG_FETCH_RETRIES=${NPM_CONFIG_FETCH_RETRIES}
+ENV NPM_CONFIG_FETCH_RETRY_FACTOR=${NPM_CONFIG_FETCH_RETRY_FACTOR}
+ENV NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=${NPM_CONFIG_FETCH_RETRY_MINTIMEOUT}
+ENV NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=${NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT}
+
 COPY package*.json ./
-RUN npm install
+
+RUN --mount=type=cache,target=/root/.npm \
+    npm install
 
 COPY . .
 
 RUN npm run build
 
-# --- Production stage ---
 FROM node:20-alpine
 
 WORKDIR /app
 
-# Copy toàn bộ từ builder bao gồm .next
+ENV NODE_ENV=production
+
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
