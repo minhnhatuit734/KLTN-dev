@@ -415,9 +415,34 @@ pipeline {
                             return 1
                         }
 
-                        for SERVICE in api-gateway auth-service users-service tours-service bookings-service reviews-service blog-service chat-service frontend; do
-                            push_image "$SERVICE"
-                        done
+                        (
+                            set -eu
+                            push_image api-gateway
+                            push_image auth-service
+                            push_image users-service
+                            push_image tours-service
+                            push_image bookings-service
+                        ) &
+                        PID_1=$!
+
+                        (
+                            set -eu
+                            push_image reviews-service
+                            push_image blog-service
+                            push_image chat-service
+                            push_image frontend
+                        ) &
+                        PID_2=$!
+
+                        FAILED=0
+
+                        wait "$PID_1" || FAILED=1
+                        wait "$PID_2" || FAILED=1
+
+                        if [ "$FAILED" -ne 0 ]; then
+                            echo "One or more image pushes failed."
+                            exit 1
+                        fi
 
                         echo "All images pushed successfully."
                     '''
