@@ -45,7 +45,7 @@ pipeline {
 
         DOCKER_BUILDKIT = '1'
 
-        SONAR_SCANNER_TOOL = 'SonarScanner'
+        SONAR_SCANNER_TOOL = 'sonar-scanner'
 
         NPM_CONFIG_REGISTRY = 'https://registry.npmjs.org/'
         NPM_CONFIG_FETCH_RETRIES = '5'
@@ -106,6 +106,7 @@ pipeline {
                     echo "Target environment: ${TARGET_ENV}"
                     echo "Image tag: ${IMAGE_TAG}"
                     echo "Sonar project key: ${SONAR_PROJECT_KEY}"
+                    echo "Sonar scanner tool: ${SONAR_SCANNER_TOOL}"
                     echo "Trivy exit code: ${TRIVY_EXIT_CODE}"
                 '''
             }
