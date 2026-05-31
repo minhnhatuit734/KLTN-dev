@@ -45,7 +45,7 @@ pipeline {
 
         DOCKER_BUILDKIT = '1'
 
-        SONAR_SCANNER_TOOL = 'sonar-scanner'
+        SONAR_SCANNER_TOOL = 'SonarScanner'
 
         NPM_CONFIG_REGISTRY = 'https://registry.npmjs.org/'
         NPM_CONFIG_FETCH_RETRIES = '5'
@@ -106,7 +106,6 @@ pipeline {
                     echo "Target environment: ${TARGET_ENV}"
                     echo "Image tag: ${IMAGE_TAG}"
                     echo "Sonar project key: ${SONAR_PROJECT_KEY}"
-                    echo "Trivy strict: ${TRIVY_STRICT}"
                     echo "Trivy exit code: ${TRIVY_EXIT_CODE}"
                 '''
             }
@@ -381,44 +380,35 @@ pipeline {
                             SERVICE="$1"
                             IMAGE="${DOCKERHUB_REPO}/${SERVICE}:${IMAGE_TAG}"
 
-                            echo "Pushing ${IMAGE}"
-                            docker push "${IMAGE}"
+                            ATTEMPT=1
+                            MAX_ATTEMPTS=3
+
+                            while [ "$ATTEMPT" -le "$MAX_ATTEMPTS" ]; do
+                                echo "Pushing ${IMAGE}, attempt ${ATTEMPT}/${MAX_ATTEMPTS}"
+
+                                if docker push "${IMAGE}"; then
+                                    echo "Pushed ${IMAGE}"
+                                    return 0
+                                fi
+
+                                echo "Push failed for ${IMAGE}"
+
+                                if [ "$ATTEMPT" -lt "$MAX_ATTEMPTS" ]; then
+                                    SLEEP_TIME=$((ATTEMPT * 20))
+                                    echo "Retrying ${IMAGE} in ${SLEEP_TIME} seconds..."
+                                    sleep "$SLEEP_TIME"
+                                fi
+
+                                ATTEMPT=$((ATTEMPT + 1))
+                            done
+
+                            echo "Failed to push ${IMAGE} after ${MAX_ATTEMPTS} attempts."
+                            return 1
                         }
 
-                        (
-                            set -eu
-                            push_image api-gateway
-                            push_image auth-service
-                            push_image users-service
-                        ) &
-                        PID_1=$!
-
-                        (
-                            set -eu
-                            push_image tours-service
-                            push_image bookings-service
-                            push_image reviews-service
-                        ) &
-                        PID_2=$!
-
-                        (
-                            set -eu
-                            push_image blog-service
-                            push_image chat-service
-                            push_image frontend
-                        ) &
-                        PID_3=$!
-
-                        FAILED=0
-
-                        wait "$PID_1" || FAILED=1
-                        wait "$PID_2" || FAILED=1
-                        wait "$PID_3" || FAILED=1
-
-                        if [ "$FAILED" -ne 0 ]; then
-                            echo "One or more image pushes failed."
-                            exit 1
-                        fi
+                        for SERVICE in api-gateway auth-service users-service tours-service bookings-service reviews-service blog-service chat-service frontend; do
+                            push_image "$SERVICE"
+                        done
 
                         echo "All images pushed successfully."
                     '''
