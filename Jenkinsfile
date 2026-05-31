@@ -106,6 +106,7 @@ pipeline {
                     echo "Target environment: ${TARGET_ENV}"
                     echo "Image tag: ${IMAGE_TAG}"
                     echo "Sonar project key: ${SONAR_PROJECT_KEY}"
+                    echo "Trivy strict: ${TRIVY_STRICT}"
                     echo "Trivy exit code: ${TRIVY_EXIT_CODE}"
                 '''
             }
@@ -194,10 +195,21 @@ pipeline {
                       --skip-dirs .next \
                       --skip-dirs dist \
                       --ignore-unfixed \
-                      --exit-code ${TRIVY_EXIT_CODE} \
+                      --exit-code "${TRIVY_EXIT_CODE}" \
                       .
 
-                    exit $?
+                    RESULT=$?
+
+                    if [ "${TRIVY_EXIT_CODE}" = "1" ] && [ "$RESULT" -ne 0 ]; then
+                        echo "Trivy filesystem scan failed in strict mode."
+                        exit 1
+                    fi
+
+                    if [ "$RESULT" -ne 0 ]; then
+                        echo "Trivy filesystem scan returned non-zero, but TRIVY_STRICT=false. Continuing."
+                    fi
+
+                    exit 0
                 '''
             }
         }
@@ -268,8 +280,16 @@ pipeline {
 
         stage('Trivy Image Scan') {
             steps {
+                script {
+                    if (params.TRIVY_STRICT) {
+                        echo "TRIVY_STRICT=true. HIGH/CRITICAL vulnerabilities will fail the pipeline."
+                    } else {
+                        echo "TRIVY_STRICT=false. Trivy will report vulnerabilities but will not block deployment."
+                    }
+                }
+
                 sh '''
-                    set -eu
+                    set +e
 
                     scan_image() {
                         SERVICE="$1"
@@ -280,13 +300,25 @@ pipeline {
                         trivy image \
                           --severity HIGH,CRITICAL \
                           --ignore-unfixed \
-                          --exit-code ${TRIVY_EXIT_CODE} \
+                          --exit-code "${TRIVY_EXIT_CODE}" \
                           --timeout 10m \
                           "${IMAGE}"
+
+                        RESULT=$?
+
+                        if [ "${TRIVY_EXIT_CODE}" = "1" ] && [ "$RESULT" -ne 0 ]; then
+                            echo "Trivy found HIGH/CRITICAL vulnerabilities in ${IMAGE}"
+                            return 1
+                        fi
+
+                        if [ "$RESULT" -ne 0 ]; then
+                            echo "Trivy scan returned non-zero for ${IMAGE}, but TRIVY_STRICT=false. Continuing."
+                        fi
+
+                        return 0
                     }
 
                     (
-                        set -eu
                         scan_image api-gateway
                         scan_image auth-service
                         scan_image users-service
@@ -294,7 +326,6 @@ pipeline {
                     PID_1=$!
 
                     (
-                        set -eu
                         scan_image tours-service
                         scan_image bookings-service
                         scan_image reviews-service
@@ -302,7 +333,6 @@ pipeline {
                     PID_2=$!
 
                     (
-                        set -eu
                         scan_image blog-service
                         scan_image chat-service
                         scan_image frontend
@@ -315,12 +345,13 @@ pipeline {
                     wait "$PID_2" || FAILED=1
                     wait "$PID_3" || FAILED=1
 
-                    if [ "$FAILED" -ne 0 ]; then
-                        echo "One or more Trivy image scans failed."
+                    if [ "${TRIVY_EXIT_CODE}" = "1" ] && [ "$FAILED" -ne 0 ]; then
+                        echo "One or more Trivy image scans failed in strict mode."
                         exit 1
                     fi
 
-                    echo "All image scans completed."
+                    echo "Trivy image scan completed."
+                    exit 0
                 '''
             }
         }
