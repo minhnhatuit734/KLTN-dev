@@ -132,11 +132,32 @@ pipeline {
         }
 
         stage('Quality Scan') {
-            steps {
-                script {
-                    if (params.RUN_SONAR) {
-                        if (params.SONAR_NON_BLOCKING) {
-                            catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
+            parallel {
+                stage('SonarQube Analysis') {
+                    when {
+                        expression { return params.RUN_SONAR }
+                    }
+
+                    steps {
+                        script {
+                            if (params.SONAR_NON_BLOCKING) {
+                                catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
+                                    def scannerHome = tool "${SONAR_SCANNER_TOOL}"
+
+                                    withSonarQubeEnv() {
+                                        sh """
+                                            set -eu
+
+                                            ${scannerHome}/bin/sonar-scanner \
+                                              -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
+                                              -Dsonar.projectName=${SONAR_PROJECT_NAME} \
+                                              -Dsonar.sources=. \
+                                              -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/.next/**,**/coverage/**,**/k8s-manifests/**,**/.git/** \
+                                              -Dsonar.sourceEncoding=UTF-8
+                                        """
+                                    }
+                                }
+                            } else {
                                 def scannerHome = tool "${SONAR_SCANNER_TOOL}"
 
                                 withSonarQubeEnv() {
@@ -152,65 +173,52 @@ pipeline {
                                     """
                                 }
                             }
-                        } else {
-                            def scannerHome = tool "${SONAR_SCANNER_TOOL}"
-
-                            withSonarQubeEnv() {
-                                sh """
-                                    set -eu
-
-                                    ${scannerHome}/bin/sonar-scanner \
-                                      -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
-                                      -Dsonar.projectName=${SONAR_PROJECT_NAME} \
-                                      -Dsonar.sources=. \
-                                      -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/.next/**,**/coverage/**,**/k8s-manifests/**,**/.git/** \
-                                      -Dsonar.sourceEncoding=UTF-8
-                                """
-                            }
                         }
-                    } else {
-                        echo "SonarQube analysis is disabled."
                     }
                 }
 
-                sh '''
-                    set +e
+                stage('Trivy FS Scan') {
+                    steps {
+                        sh '''
+                            set +e
 
-                    echo "Running Trivy filesystem scan..."
+                            echo "Running Trivy filesystem scan..."
 
-                    trivy fs \
-                      --scanners vuln,secret,misconfig \
-                      --severity HIGH,CRITICAL \
-                      --skip-dirs node_modules \
-                      --skip-dirs frontend/node_modules \
-                      --skip-dirs services/api-gateway/node_modules \
-                      --skip-dirs services/auth-service/node_modules \
-                      --skip-dirs services/users-service/node_modules \
-                      --skip-dirs services/tours-service/node_modules \
-                      --skip-dirs services/bookings-service/node_modules \
-                      --skip-dirs services/reviews-service/node_modules \
-                      --skip-dirs services/blog-service/node_modules \
-                      --skip-dirs services/chat-service/node_modules \
-                      --skip-dirs .git \
-                      --skip-dirs .next \
-                      --skip-dirs dist \
-                      --ignore-unfixed \
-                      --exit-code "${TRIVY_EXIT_CODE}" \
-                      .
+                            trivy fs \
+                              --scanners vuln,secret,misconfig \
+                              --severity HIGH,CRITICAL \
+                              --skip-dirs node_modules \
+                              --skip-dirs frontend/node_modules \
+                              --skip-dirs services/api-gateway/node_modules \
+                              --skip-dirs services/auth-service/node_modules \
+                              --skip-dirs services/users-service/node_modules \
+                              --skip-dirs services/tours-service/node_modules \
+                              --skip-dirs services/bookings-service/node_modules \
+                              --skip-dirs services/reviews-service/node_modules \
+                              --skip-dirs services/blog-service/node_modules \
+                              --skip-dirs services/chat-service/node_modules \
+                              --skip-dirs .git \
+                              --skip-dirs .next \
+                              --skip-dirs dist \
+                              --ignore-unfixed \
+                              --exit-code "${TRIVY_EXIT_CODE}" \
+                              .
 
-                    RESULT=$?
+                            RESULT=$?
 
-                    if [ "${TRIVY_EXIT_CODE}" = "1" ] && [ "$RESULT" -ne 0 ]; then
-                        echo "Trivy filesystem scan failed in strict mode."
-                        exit 1
-                    fi
+                            if [ "${TRIVY_EXIT_CODE}" = "1" ] && [ "$RESULT" -ne 0 ]; then
+                                echo "Trivy filesystem scan failed in strict mode."
+                                exit 1
+                            fi
 
-                    if [ "$RESULT" -ne 0 ]; then
-                        echo "Trivy filesystem scan returned non-zero, but TRIVY_STRICT=false. Continuing."
-                    fi
+                            if [ "$RESULT" -ne 0 ]; then
+                                echo "Trivy filesystem scan returned non-zero, but TRIVY_STRICT=false. Continuing."
+                            fi
 
-                    exit 0
-                '''
+                            exit 0
+                        '''
+                    }
+                }
             }
         }
 
