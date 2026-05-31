@@ -383,7 +383,32 @@ pipeline {
                     sh '''
                         set -eu
 
-                        echo "${DOCKER_PASS}" | docker login -u "${DOCKER_USER}" --password-stdin
+                        docker_login() {
+                            ATTEMPT=1
+                            MAX_ATTEMPTS=3
+
+                            while [ "$ATTEMPT" -le "$MAX_ATTEMPTS" ]; do
+                                echo "DockerHub login attempt ${ATTEMPT}/${MAX_ATTEMPTS}"
+
+                                if echo "${DOCKER_PASS}" | docker login -u "${DOCKER_USER}" --password-stdin; then
+                                    echo "DockerHub login succeeded."
+                                    return 0
+                                fi
+
+                                echo "DockerHub login failed."
+
+                                if [ "$ATTEMPT" -lt "$MAX_ATTEMPTS" ]; then
+                                    SLEEP_TIME=$((ATTEMPT * 20))
+                                    echo "Retrying DockerHub login in ${SLEEP_TIME} seconds..."
+                                    sleep "$SLEEP_TIME"
+                                fi
+
+                                ATTEMPT=$((ATTEMPT + 1))
+                            done
+
+                            echo "DockerHub login failed after ${MAX_ATTEMPTS} attempts."
+                            return 1
+                        }
 
                         push_image() {
                             SERVICE="$1"
@@ -415,34 +440,11 @@ pipeline {
                             return 1
                         }
 
-                        (
-                            set -eu
-                            push_image api-gateway
-                            push_image auth-service
-                            push_image users-service
-                            push_image tours-service
-                            push_image bookings-service
-                        ) &
-                        PID_1=$!
+                        docker_login
 
-                        (
-                            set -eu
-                            push_image reviews-service
-                            push_image blog-service
-                            push_image chat-service
-                            push_image frontend
-                        ) &
-                        PID_2=$!
-
-                        FAILED=0
-
-                        wait "$PID_1" || FAILED=1
-                        wait "$PID_2" || FAILED=1
-
-                        if [ "$FAILED" -ne 0 ]; then
-                            echo "One or more image pushes failed."
-                            exit 1
-                        fi
+                        for SERVICE in api-gateway auth-service users-service tours-service bookings-service reviews-service blog-service chat-service frontend; do
+                            push_image "$SERVICE"
+                        done
 
                         echo "All images pushed successfully."
                     '''
@@ -456,7 +458,9 @@ pipeline {
             }
 
             steps {
-                input message: 'Deploy to production?', ok: 'Deploy'
+                timeout(time: 30, unit: 'MINUTES') {
+                    input message: 'Deploy to production?', ok: 'Deploy'
+                }
             }
         }
 
