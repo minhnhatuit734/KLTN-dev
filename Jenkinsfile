@@ -456,7 +456,9 @@ pipeline {
             }
 
             steps {
-                input message: 'Deploy to production?', ok: 'Deploy'
+                timeout(time: 30, unit: 'MINUTES') {
+                    input message: 'Deploy to production?', ok: 'Deploy'
+                }
             }
         }
 
