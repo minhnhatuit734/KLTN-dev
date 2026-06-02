@@ -40,7 +40,7 @@ export default function ChatbotPopover() {
 
     try {
       const isRasa = model === "rasa";
-      const endpoint = isRasa ? "http://localhost:4000/chat/rasa" : "http://localhost:4000/chat";
+      const endpoint = isRasa ? "https://api-dev.uittravel.shop/chat/rasa" : "https://api-dev.uittravel.shop/chat";
       
       const bodyPayload = isRasa 
         ? { message: question, sender: "user-frontend" }

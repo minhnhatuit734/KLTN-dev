@@ -147,7 +147,7 @@ services:
     depends_on:
       - api-gateway
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:4000
+      NEXT_PUBLIC_API_URL: https://api-dev.uittravel.shop
     networks:
       - tour-network
 

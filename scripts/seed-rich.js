@@ -1,5 +1,5 @@
 /* eslint-disable no-console */
-const API_BASE = process.env.API_URL || 'http://localhost:4000';
+const API_BASE = process.env.API_URL || 'https://api-dev.uittravel.shop';
 
 async function request(path, options = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
