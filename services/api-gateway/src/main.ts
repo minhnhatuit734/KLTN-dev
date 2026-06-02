@@ -4,21 +4,8 @@ import axios from 'axios';
 const app: Express = express();
 const PORT = process.env.PORT || 4000;
 
-// Middleware
-app.use((req: Request, res: Response, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(204);
-  }
-  next();
-});
+type AnyData = Record<string, any>;
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// Service URLs
 const serviceUrls = {
   auth: process.env.AUTH_SERVICE_URL || 'http://localhost:3002',
   users: process.env.USERS_SERVICE_URL || 'http://localhost:3001',
@@ -29,19 +16,115 @@ const serviceUrls = {
   chat: process.env.CHAT_SERVICE_URL || 'http://localhost:3007',
 };
 
-type AnyData = Record<string, any>;
+app.use((req: Request, res: Response, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+
+  next();
+});
+
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+app.get('/', (_req: Request, res: Response) => {
+  res.status(200).json({
+    service: 'api-gateway',
+    status: 'ok',
+    message: 'KLTN API Gateway is running',
+    routes: [
+      '/health',
+      '/auth',
+      '/users',
+      '/tours',
+      '/bookings',
+      '/booking',
+      '/reviews',
+      '/blog/posts',
+      '/blog-post',
+      '/blog-comment',
+      '/chat',
+      '/chat/rasa',
+    ],
+  });
+});
+
+app.get('/health', (_req: Request, res: Response) => {
+  res.status(200).json({
+    service: 'api-gateway',
+    status: 'healthy',
+    port: PORT,
+    upstreams: serviceUrls,
+  });
+});
+
+function isLegacyBookingPath(path: string): boolean {
+  return path === '/booking' || path.startsWith('/booking/');
+}
+
+function isLegacyBlogPostPath(path: string): boolean {
+  return path === '/blog-post' || path.startsWith('/blog-post/');
+}
+
+function isLegacyBlogCommentPath(path: string): boolean {
+  return path === '/blog-comment' || path.startsWith('/blog-comment/');
+}
+
+function rewritePathPrefix(path: string, fromPrefix: string, toPrefix: string): string {
+  if (path === fromPrefix) {
+    return toPrefix;
+  }
+
+  if (path.startsWith(`${fromPrefix}/`)) {
+    return `${toPrefix}${path.slice(fromPrefix.length)}`;
+  }
+
+  return path;
+}
+
+function buildQueryParams(query: Request['query']): URLSearchParams {
+  const params = new URLSearchParams();
+
+  Object.entries(query).forEach(([key, value]) => {
+    if (value === undefined || value === null) {
+      return;
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach((item) => {
+        if (item !== undefined && item !== null) {
+          params.append(key, String(item));
+        }
+      });
+      return;
+    }
+
+    params.set(key, String(value));
+  });
+
+  return params;
+}
 
 function mapLegacyRequestBody(rewrittenPath: string, method: string, body: any): any {
-  if (!body || typeof body !== 'object') return body;
+  if (!body || typeof body !== 'object') {
+    return body;
+  }
+
   const upper = method.toUpperCase();
   const mapped: AnyData = { ...body };
 
   if (rewrittenPath.startsWith('/bookings') && (upper === 'POST' || upper === 'PATCH')) {
     if (mapped.user && !mapped.userId) mapped.userId = mapped.user;
     if (mapped.tour && !mapped.tourId) mapped.tourId = mapped.tour;
+
     if (mapped.num_people !== undefined && mapped.numberOfGuests === undefined) {
       mapped.numberOfGuests = mapped.num_people;
     }
+
     if (mapped.total_price !== undefined && mapped.totalPrice === undefined) {
       mapped.totalPrice = mapped.total_price;
     }
@@ -67,7 +150,10 @@ function mapLegacyRequestBody(rewrittenPath: string, method: string, body: any):
 }
 
 function toLegacyBookingShape(raw: AnyData): AnyData {
-  if (!raw || typeof raw !== 'object') return raw;
+  if (!raw || typeof raw !== 'object') {
+    return raw;
+  }
+
   return {
     ...raw,
     user: raw.user ?? raw.userId ?? null,
@@ -78,7 +164,10 @@ function toLegacyBookingShape(raw: AnyData): AnyData {
 }
 
 function toLegacyReviewShape(raw: AnyData): AnyData {
-  if (!raw || typeof raw !== 'object') return raw;
+  if (!raw || typeof raw !== 'object') {
+    return raw;
+  }
+
   return {
     ...raw,
     user: raw.user ?? raw.userId ?? null,
@@ -88,7 +177,10 @@ function toLegacyReviewShape(raw: AnyData): AnyData {
 }
 
 function toLegacyBlogPostShape(raw: AnyData): AnyData {
-  if (!raw || typeof raw !== 'object') return raw;
+  if (!raw || typeof raw !== 'object') {
+    return raw;
+  }
+
   return {
     ...raw,
     author: raw.author ?? raw.authorId ?? null,
@@ -96,7 +188,10 @@ function toLegacyBlogPostShape(raw: AnyData): AnyData {
 }
 
 function toLegacyBlogCommentShape(raw: AnyData): AnyData {
-  if (!raw || typeof raw !== 'object') return raw;
+  if (!raw || typeof raw !== 'object') {
+    return raw;
+  }
+
   return {
     ...raw,
     user: raw.user ?? raw.userId ?? null,
@@ -112,14 +207,15 @@ async function enrichBookings(data: AnyData[] | AnyData): Promise<AnyData[] | An
   const userIds = Array.from(
     new Set(
       normalized
-        .map((b) => (typeof b.user === 'string' ? b.user : b.user?._id))
+        .map((booking) => (typeof booking.user === 'string' ? booking.user : booking.user?._id))
         .filter(Boolean),
     ),
   );
+
   const tourIds = Array.from(
     new Set(
       normalized
-        .map((b) => (typeof b.tour === 'string' ? b.tour : b.tour?._id))
+        .map((booking) => (typeof booking.tour === 'string' ? booking.tour : booking.tour?._id))
         .filter(Boolean),
     ),
   );
@@ -130,12 +226,15 @@ async function enrichBookings(data: AnyData[] | AnyData): Promise<AnyData[] | An
   await Promise.all(
     userIds.map(async (id) => {
       try {
-        const resp = await axios.get(`${serviceUrls.users}/users/${id}`, {
+        const response = await axios.get(`${serviceUrls.users}/users/${id}`, {
           validateStatus: () => true,
         });
-        if (resp.status < 400 && resp.data) userMap.set(id as string, resp.data);
+
+        if (response.status < 400 && response.data) {
+          userMap.set(id as string, response.data);
+        }
       } catch {
-        // ignore enrichment failures
+        // Ignore enrichment failures.
       }
     }),
   );
@@ -143,23 +242,27 @@ async function enrichBookings(data: AnyData[] | AnyData): Promise<AnyData[] | An
   await Promise.all(
     tourIds.map(async (id) => {
       try {
-        const resp = await axios.get(`${serviceUrls.tours}/tours/${id}`, {
+        const response = await axios.get(`${serviceUrls.tours}/tours/${id}`, {
           validateStatus: () => true,
         });
-        if (resp.status < 400 && resp.data) tourMap.set(id as string, resp.data);
+
+        if (response.status < 400 && response.data) {
+          tourMap.set(id as string, response.data);
+        }
       } catch {
-        // ignore enrichment failures
+        // Ignore enrichment failures.
       }
     }),
   );
 
-  const enriched = normalized.map((b) => {
-    const userId = typeof b.user === 'string' ? b.user : b.user?._id;
-    const tourId = typeof b.tour === 'string' ? b.tour : b.tour?._id;
+  const enriched = normalized.map((booking) => {
+    const userId = typeof booking.user === 'string' ? booking.user : booking.user?._id;
+    const tourId = typeof booking.tour === 'string' ? booking.tour : booking.tour?._id;
+
     return {
-      ...b,
-      user: userMap.get(userId) || b.user,
-      tour: tourMap.get(tourId) || b.tour,
+      ...booking,
+      user: userMap.get(userId) || booking.user,
+      tour: tourMap.get(tourId) || booking.tour,
     };
   });
 
@@ -171,27 +274,45 @@ async function mapLegacyResponse(
   method: string,
   data: any,
 ): Promise<any> {
-  if (!data) return data;
+  if (!data) {
+    return data;
+  }
+
   const upper = method.toUpperCase();
 
-  if (originalPath.startsWith('/booking')) {
-    if (upper === 'GET') return enrichBookings(data);
-    if (Array.isArray(data)) return data.map(toLegacyBookingShape);
+  if (isLegacyBookingPath(originalPath)) {
+    if (upper === 'GET') {
+      return enrichBookings(data);
+    }
+
+    if (Array.isArray(data)) {
+      return data.map(toLegacyBookingShape);
+    }
+
     return toLegacyBookingShape(data);
   }
 
   if (originalPath.startsWith('/reviews')) {
-    if (Array.isArray(data)) return data.map(toLegacyReviewShape);
+    if (Array.isArray(data)) {
+      return data.map(toLegacyReviewShape);
+    }
+
     return toLegacyReviewShape(data);
   }
 
-  if (originalPath.startsWith('/blog-post')) {
-    if (Array.isArray(data)) return data.map(toLegacyBlogPostShape);
+  if (isLegacyBlogPostPath(originalPath)) {
+    if (Array.isArray(data)) {
+      return data.map(toLegacyBlogPostShape);
+    }
+
     return toLegacyBlogPostShape(data);
   }
 
-  if (originalPath.startsWith('/blog-comment')) {
-    if (Array.isArray(data)) return data.map(toLegacyBlogCommentShape);
+  if (isLegacyBlogCommentPath(originalPath)) {
+    if (Array.isArray(data)) {
+      return data.map(toLegacyBlogCommentShape);
+    }
+
     return toLegacyBlogCommentShape(data);
   }
 
@@ -200,31 +321,34 @@ async function mapLegacyResponse(
 
 function rewriteLegacyRequest(req: Request): string {
   let path = req.path;
-  const params = new URLSearchParams(req.query as Record<string, string>);
+  const method = req.method.toUpperCase();
+  const params = buildQueryParams(req.query);
 
   if (path === '/auth/forgot') {
     path = '/auth/forgot-password';
   } else if (path.startsWith('/booking/user/')) {
-    const userId = path.replace('/booking/user/', '');
+    const userId = path.slice('/booking/user/'.length);
     path = '/bookings';
-    params.set('userId', userId);
-  } else if (path.startsWith('/booking')) {
-    path = path.replace('/booking', '/bookings');
-  } else if (path === '/blog-post' || path.startsWith('/blog-post/')) {
-    path = path.replace('/blog-post', '/blog/posts');
-  } else if (path === '/blog-comment' && req.method.toUpperCase() === 'GET') {
+
+    if (userId) {
+      params.set('userId', userId);
+    }
+  } else if (isLegacyBookingPath(path)) {
+    path = rewritePathPrefix(path, '/booking', '/bookings');
+  } else if (isLegacyBlogPostPath(path)) {
+    path = rewritePathPrefix(path, '/blog-post', '/blog/posts');
+  } else if (path === '/blog-comment' && method === 'GET') {
     const postId = params.get('post');
+
     if (postId) {
       path = `/blog/posts/${postId}/comments`;
       params.delete('post');
     }
-  } else if (
-    path === '/blog-comment' &&
-    req.method.toUpperCase() === 'POST'
-  ) {
+  } else if (path === '/blog-comment' && method === 'POST') {
     path = '/blog/comments';
   } else if (path === '/reviews') {
     const tour = params.get('tour');
+
     if (tour) {
       params.set('tourId', tour);
       params.delete('tour');
@@ -235,45 +359,77 @@ function rewriteLegacyRequest(req: Request): string {
   return queryString ? `${path}?${queryString}` : path;
 }
 
-// Gateway middleware - routes all requests to appropriate services
+function getTargetServiceUrl(rewrittenPath: string): string | null {
+  const resource = rewrittenPath.split('?')[0].split('/')[1];
+
+  switch (resource) {
+    case 'auth':
+      return serviceUrls.auth;
+    case 'users':
+      return serviceUrls.users;
+    case 'tours':
+      return serviceUrls.tours;
+    case 'bookings':
+      return serviceUrls.bookings;
+    case 'reviews':
+      return serviceUrls.reviews;
+    case 'blog':
+      return serviceUrls.blog;
+    case 'chat':
+      return serviceUrls.chat;
+    default:
+      return null;
+  }
+}
+
 app.all('*', async (req: Request, res: Response) => {
   const originalPath = req.path;
   const rewrittenPath = rewriteLegacyRequest(req);
-  const path = rewrittenPath.split('?')[0].split('/')[1];
-  let serviceUrl = serviceUrls.auth;
+  const rewrittenPathOnly = rewrittenPath.split('?')[0];
+  const serviceUrl = getTargetServiceUrl(rewrittenPath);
 
-  if (path === 'users') serviceUrl = serviceUrls.users;
-  else if (path === 'tours') serviceUrl = serviceUrls.tours;
-  else if (path === 'bookings') serviceUrl = serviceUrls.bookings;
-  else if (path === 'reviews') serviceUrl = serviceUrls.reviews;
-  else if (path === 'blog') serviceUrl = serviceUrls.blog;
-  else if (path === 'chat') serviceUrl = serviceUrls.chat;
+  if (!serviceUrl) {
+    return res.status(404).json({
+      error: 'Gateway route not found',
+      message: `No upstream service mapping for ${originalPath}`,
+      path: originalPath,
+      rewrittenPath,
+    });
+  }
 
   const fullUrl = `${serviceUrl}${rewrittenPath}`;
-  const mappedBody = mapLegacyRequestBody(rewrittenPath.split('?')[0], req.method, req.body);
+  const mappedBody = mapLegacyRequestBody(rewrittenPathOnly, req.method, req.body);
+
   const forwardedHeaders = { ...req.headers } as Record<string, any>;
   delete forwardedHeaders.host;
   delete forwardedHeaders['content-length'];
   delete forwardedHeaders.connection;
 
+  console.log(`[Gateway] ${req.method} ${originalPath} -> ${fullUrl}`);
+
   try {
     const response = await axios({
       method: req.method.toLowerCase() as any,
       url: fullUrl,
-      data: mappedBody,
+      data: req.method.toUpperCase() === 'GET' ? undefined : mappedBody,
       headers: forwardedHeaders,
       validateStatus: () => true,
     });
+
     const mappedResponse = await mapLegacyResponse(
       originalPath,
       req.method,
       response.data,
     );
-    res.status(response.status).send(mappedResponse);
+
+    return res.status(response.status).send(mappedResponse);
   } catch (error: any) {
-    res.status(500).json({
+    return res.status(500).json({
       error: 'Gateway error',
       message: error.message,
+      path: originalPath,
+      rewrittenPath,
+      upstream: fullUrl,
     });
   }
 });
