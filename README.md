@@ -396,7 +396,7 @@ Ví dụ:
 MONGO_ATLAS_URI=mongodb+srv://<username>:<password>@<cluster-url>
 JWT_SECRET=your_jwt_secret
 TOGETHER_API_KEY=your_together_api_key
-NEXT_PUBLIC_API_URL=http://localhost:4000
+NEXT_PUBLIC_API_URL=https://api-dev.uittravel.shop
 ```
 
 Lưu ý:
@@ -478,23 +478,23 @@ user3@example.com / 123456
 ### 14.1 Kiểm tra danh sách tour
 
 ```bash
-curl http://localhost:4000/tours
+curl https://api-dev.uittravel.shop/tours
 ```
 
 ### 14.2 Kiểm tra blog
 
 ```bash
-curl http://localhost:4000/blog-post
+curl https://api-dev.uittravel.shop/blog-post
 ```
 
 ### 14.3 Kiểm tra đăng nhập
 
 ```bash
+<<<<<<< HEAD
 curl -X POST http://localhost:4000/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"admin@example.com","password":"123456"}'
-```
-
+=======
+curl -X POST https://api-dev.uittravel.shop/auth/login \
+curl -X POST https://api-dev.uittravel.shop/auth/login \
 ---
 
 ## 15. Kiểm tra trên Kubernetes
@@ -649,6 +649,14 @@ docker-compose.yml
 sonar-project.properties
 .env.example
 README.md
+<<<<<<< HEAD
+```
+
+---
+
+## 19. Repository liên quan
+
+```text
 ```
 
 ---
@@ -678,5 +686,17 @@ https://github.com/ThinhQuang08/Chatbot
 2. Prod có bước Production Approval trước khi update manifest.
 3. Trivy đang ở chế độ report-only vì dependency còn nhiều HIGH/CRITICAL vulnerabilities.
 4. Chatbot Rasa chưa được tích hợp hoàn chỉnh vào hệ thống chính.
-5. Domain, HTTPS và Ingress/ALB sẽ được triển khai ở giai đoạn sau.
+5. Domain, HTTPS và Ingress/ALB sẽ được triển khai ở giai đoạn sau.rce:
+https://github.com/minhnhatuit734/KLTN-dev
+
+Infrastructure as Code:
+https://github.com/minhnhatuit734/kltn-terraform
+
+Kubernetes manifests:
+https://github.com/minhnhatuit734/k8s-manifests
+
+Rasa/MLOps Chatbot:
+https://github.com/ThinhQuang08/Chatbot
 ```
+
+---

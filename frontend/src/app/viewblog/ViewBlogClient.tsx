@@ -23,7 +23,7 @@ type Comment = {
   createdAt?: string;
 };
 
-const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+const BASE = process.env.NEXT_PUBLIC_API_URL || "https://api-dev.uittravel.shop";
 
 export default function ViewBlogClient() {
   const router = useRouter();
