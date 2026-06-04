@@ -297,15 +297,13 @@ pipeline {
             }
         }
 
-        // ── 5. CI: Build → Scan → Push (per-service parallel) ───────────────────
-        // Each service runs its full Build → Trivy Scan → Push pipeline
-        // independently and concurrently. No service waits for another.
-        // Only branch develop/main performs the Push step.
+        // ── 5. CI: Build → Scan → Push (Parallel, Independent) ────────────────
+        // Each service runs its own pipeline independently.
+        // Service A will NOT wait for Service B to finish building before scanning.
         stage('CI: Build → Scan → Push') {
             when {
                 expression { return env.CHANGED_SERVICES?.trim() }
             }
-
             steps {
                 withCredentials([
                     usernamePassword(
@@ -327,9 +325,9 @@ pipeline {
                             'frontend'         : ['frontend/dockerfile',                 'frontend'],
                         ]
 
-                        // Docker login once before spinning up parallel branches
                         def doPush = (env.BRANCH_NAME == 'develop' || env.BRANCH_NAME == 'main')
 
+                        // Docker login once
                         if (doPush) {
                             sh '''
                                 set -eu
@@ -351,12 +349,8 @@ pipeline {
 
                         changedList.each { svc ->
                             def cfg = serviceConfig[svc]
-                            if (!cfg) {
-                                echo "WARNING: no config for '${svc}', skipping."
-                                return
-                            }
+                            if (!cfg) return
 
-                            // Capture loop variables for closure
                             def _svc        = svc
                             def _dockerfile = cfg[0]
                             def _context    = cfg[1]
@@ -364,69 +358,64 @@ pipeline {
                             def _doPush     = doPush
 
                             parallelBranches["${_svc}"] = {
-                                // ── Step 1: Build ─────────────────────────────
-                                sh """
-                                    set -eu
-                                    echo "━━━ [${_svc}] BUILD ━━━"
-                                    docker build \\
-                                      --network=host \\
-                                      --build-arg NPM_CONFIG_REGISTRY="${NPM_CONFIG_REGISTRY}" \\
-                                      --build-arg NPM_CONFIG_FETCH_RETRIES="${NPM_CONFIG_FETCH_RETRIES}" \\
-                                      --build-arg NPM_CONFIG_FETCH_RETRY_FACTOR="${NPM_CONFIG_FETCH_RETRY_FACTOR}" \\
-                                      --build-arg NPM_CONFIG_FETCH_RETRY_MINTIMEOUT="${NPM_CONFIG_FETCH_RETRY_MINTIMEOUT}" \\
-                                      --build-arg NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT="${NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT}" \\
-                                      -t "${_image}" \\
-                                      -f "${_dockerfile}" \\
-                                      "${_context}"
-                                    echo "✔ [${_svc}] Build done"
-                                """
-
-                                // ── Step 2: Trivy Scan ────────────────────────
-                                sh """
-                                    set +e
-                                    echo "━━━ [${_svc}] TRIVY SCAN ━━━"
-
-                                    trivy image \\
-                                      --severity HIGH,CRITICAL \\
-                                      --ignore-unfixed \\
-                                      --exit-code "${TRIVY_EXIT_CODE}" \\
-                                      --timeout 10m \\
-                                      "${_image}"
-
-                                    RESULT=\$?
-
-                                    if [ "${TRIVY_EXIT_CODE}" = "1" ] && [ "\$RESULT" -ne 0 ]; then
-                                        echo "✘ [${_svc}] Trivy found HIGH/CRITICAL vulnerabilities"
-                                        exit 1
-                                    fi
-
-                                    [ "\$RESULT" -ne 0 ] && echo "⚠ [${_svc}] Trivy non-zero (non-strict, continuing)"
-                                    echo "✔ [${_svc}] Trivy scan done"
-                                    exit 0
-                                """
-
-                                // ── Step 3: Push (develop/main only) ─────────
-                                if (_doPush) {
+                                stage("Build ${_svc}") {
                                     sh """
                                         set -eu
-                                        echo "━━━ [${_svc}] PUSH ━━━"
-
-                                        ATTEMPT=1; MAX_ATTEMPTS=3
-                                        while [ "\$ATTEMPT" -le "\$MAX_ATTEMPTS" ]; do
-                                            echo "Pushing ${_image}, attempt \$ATTEMPT/\$MAX_ATTEMPTS"
-                                            if docker push "${_image}"; then
-                                                echo "✔ [${_svc}] Pushed ${_image}"
-                                                exit 0
-                                            fi
-                                            ATTEMPT=\$((\$ATTEMPT + 1))
-                                            [ "\$ATTEMPT" -le "\$MAX_ATTEMPTS" ] && sleep \$((\$ATTEMPT * 20))
-                                        done
-
-                                        echo "✘ [${_svc}] Push failed after \$MAX_ATTEMPTS attempts."
-                                        exit 1
+                                        echo "━━━ [${_svc}] BUILD ━━━"
+                                        docker build \\
+                                          --network=host \\
+                                          --build-arg NPM_CONFIG_REGISTRY="${NPM_CONFIG_REGISTRY}" \\
+                                          --build-arg NPM_CONFIG_FETCH_RETRIES="${NPM_CONFIG_FETCH_RETRIES}" \\
+                                          --build-arg NPM_CONFIG_FETCH_RETRY_FACTOR="${NPM_CONFIG_FETCH_RETRY_FACTOR}" \\
+                                          --build-arg NPM_CONFIG_FETCH_RETRY_MINTIMEOUT="${NPM_CONFIG_FETCH_RETRY_MINTIMEOUT}" \\
+                                          --build-arg NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT="${NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT}" \\
+                                          -t "${_image}" \\
+                                          -f "${_dockerfile}" \\
+                                          "${_context}"
                                     """
-                                } else {
-                                    echo "[${_svc}] Branch '${env.BRANCH_NAME}' → skipping push (develop/main only)"
+                                }
+
+                                stage("Scan ${_svc}") {
+                                    sh """
+                                        set +e
+                                        echo "━━━ [${_svc}] TRIVY SCAN ━━━"
+                                        trivy image \\
+                                          --severity HIGH,CRITICAL \\
+                                          --ignore-unfixed \\
+                                          --exit-code "${TRIVY_EXIT_CODE}" \\
+                                          --timeout 10m \\
+                                          "${_image}"
+                                        RESULT=\$?
+                                        if [ "${TRIVY_EXIT_CODE}" = "1" ] && [ "\$RESULT" -ne 0 ]; then
+                                            echo "✘ [${_svc}] Trivy found HIGH/CRITICAL vulnerabilities"
+                                            exit 1
+                                        fi
+                                        [ "\$RESULT" -ne 0 ] && echo "⚠ [${_svc}] Trivy non-zero (non-strict, continuing)" || true
+                                        exit 0
+                                    """
+                                }
+
+                                stage("Push ${_svc}") {
+                                    if (_doPush) {
+                                        sh """
+                                            set -eu
+                                            echo "━━━ [${_svc}] PUSH ━━━"
+                                            ATTEMPT=1; MAX_ATTEMPTS=3
+                                            while [ "\$ATTEMPT" -le "\$MAX_ATTEMPTS" ]; do
+                                                echo "Pushing ${_image}, attempt \$ATTEMPT/\$MAX_ATTEMPTS"
+                                                if docker push "${_image}"; then
+                                                    echo "✔ [${_svc}] Pushed ${_image}"
+                                                    exit 0
+                                                fi
+                                                ATTEMPT=\$((\$ATTEMPT + 1))
+                                                [ "\$ATTEMPT" -le "\$MAX_ATTEMPTS" ] && sleep \$((\$ATTEMPT * 20))
+                                            done
+                                            echo "✘ [${_svc}] Push failed after \$MAX_ATTEMPTS attempts."
+                                            exit 1
+                                        """
+                                    } else {
+                                        echo "[${_svc}] Branch '${env.BRANCH_NAME}' → skipping push"
+                                    }
                                 }
                             }
                         }
