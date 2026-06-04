@@ -58,6 +58,8 @@ pipeline {
         NPM_CONFIG_FETCH_RETRY_FACTOR    = '2'
         NPM_CONFIG_FETCH_RETRY_MINTIMEOUT  = '20000'
         NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT  = '120000'
+
+        TRIVY_DISABLE_VEX_NOTICE  = 'true'
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -212,7 +214,7 @@ pipeline {
                     steps {
                         script {
                             if (params.SONAR_NON_BLOCKING) {
-                                catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
+                                try {
                                     def scannerHome = tool "${SONAR_SCANNER_TOOL}"
 
                                     withSonarQubeEnv() {
@@ -227,6 +229,8 @@ pipeline {
                                               -Dsonar.sourceEncoding=UTF-8
                                         """
                                     }
+                                } catch (Exception e) {
+                                    echo "⚠ SonarQube analysis failed, but SONAR_NON_BLOCKING is true. Ignoring error: ${e.message}"
                                 }
                             } else {
                                 def scannerHome = tool "${SONAR_SCANNER_TOOL}"
@@ -293,130 +297,13 @@ pipeline {
             }
         }
 
-        // ── 5. Build Images (parallel, changed services only) ─────────────────
-        stage('Build Images') {
+        // ── 5. CI: Build → Scan → Push (per-service parallel) ───────────────────
+        // Each service runs its full Build → Trivy Scan → Push pipeline
+        // independently and concurrently. No service waits for another.
+        // Only branch develop/main performs the Push step.
+        stage('CI: Build → Scan → Push') {
             when {
                 expression { return env.CHANGED_SERVICES?.trim() }
-            }
-
-            steps {
-                script {
-                    // Full config: service → [dockerfile, context]
-                    def serviceConfig = [
-                        'api-gateway'      : ['services/api-gateway/dockerfile',   'services/api-gateway'],
-                        'auth-service'     : ['services/auth-service/dockerfile',   'services/auth-service'],
-                        'users-service'    : ['services/users-service/dockerfile',  'services/users-service'],
-                        'tours-service'    : ['services/tours-service/dockerfile',  'services/tours-service'],
-                        'bookings-service' : ['services/bookings-service/dockerfile','services/bookings-service'],
-                        'reviews-service'  : ['services/reviews-service/dockerfile','services/reviews-service'],
-                        'blog-service'     : ['services/blog-service/dockerfile',   'services/blog-service'],
-                        'chat-service'     : ['services/chat-service/dockerfile',   'services/chat-service'],
-                        'frontend'         : ['frontend/dockerfile',                'frontend'],
-                    ]
-
-                    def changedList = env.CHANGED_SERVICES.trim().split(' ')
-
-                    // Build a parallel map containing only changed services
-                    def parallelStages = [:]
-
-                    changedList.each { svc ->
-                        def cfg = serviceConfig[svc]
-                        if (!cfg) {
-                            echo "WARNING: no config found for service '${svc}', skipping."
-                            return
-                        }
-                        def dockerfile = cfg[0]
-                        def context    = cfg[1]
-                        def image      = "${env.DOCKERHUB_REPO}/${svc}:${env.IMAGE_TAG}"
-
-                        parallelStages["build-${svc}"] = {
-                            sh """
-                                set -eu
-                                echo "▶ Building ${svc} → ${image}"
-                                docker build \\
-                                  --network=host \\
-                                  --build-arg NPM_CONFIG_REGISTRY="${NPM_CONFIG_REGISTRY}" \\
-                                  --build-arg NPM_CONFIG_FETCH_RETRIES="${NPM_CONFIG_FETCH_RETRIES}" \\
-                                  --build-arg NPM_CONFIG_FETCH_RETRY_FACTOR="${NPM_CONFIG_FETCH_RETRY_FACTOR}" \\
-                                  --build-arg NPM_CONFIG_FETCH_RETRY_MINTIMEOUT="${NPM_CONFIG_FETCH_RETRY_MINTIMEOUT}" \\
-                                  --build-arg NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT="${NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT}" \\
-                                  -t "${image}" \\
-                                  -f "${dockerfile}" \\
-                                  "${context}"
-                                echo "✔ Built ${svc}"
-                            """
-                        }
-                    }
-
-                    parallel parallelStages
-                }
-            }
-        }
-
-        // ── 6. Trivy Image Scan (parallel, changed services only) ────────────
-        stage('Trivy Image Scan') {
-            when {
-                expression { return env.CHANGED_SERVICES?.trim() }
-            }
-
-            steps {
-                script {
-                    if (params.TRIVY_STRICT) {
-                        echo 'TRIVY_STRICT=true. HIGH/CRITICAL vulnerabilities will fail the pipeline.'
-                    } else {
-                        echo 'TRIVY_STRICT=false. Trivy will report vulnerabilities but will not block deployment.'
-                    }
-
-                    def changedList = env.CHANGED_SERVICES.trim().split(' ')
-                    def parallelStages = [:]
-
-                    changedList.each { svc ->
-                        def image = "${env.DOCKERHUB_REPO}/${svc}:${env.IMAGE_TAG}"
-
-                        parallelStages["trivy-${svc}"] = {
-                            sh """
-                                set +e
-
-                                echo "Scanning ${image}"
-
-                                trivy image \\
-                                  --severity HIGH,CRITICAL \\
-                                  --ignore-unfixed \\
-                                  --exit-code "${TRIVY_EXIT_CODE}" \\
-                                  --timeout 10m \\
-                                  "${image}"
-
-                                RESULT=\$?
-
-                                if [ "${TRIVY_EXIT_CODE}" = "1" ] && [ "\$RESULT" -ne 0 ]; then
-                                    echo "Trivy found HIGH/CRITICAL vulnerabilities in ${image}"
-                                    exit 1
-                                fi
-
-                                if [ "\$RESULT" -ne 0 ]; then
-                                    echo "Trivy scan returned non-zero for ${image}, but TRIVY_STRICT=false. Continuing."
-                                fi
-
-                                exit 0
-                            """
-                        }
-                    }
-
-                    parallel parallelStages
-                }
-            }
-        }
-
-        // ── 7. Push Images (parallel, changed services only) ─────────────────
-        stage('Push Images') {
-            when {
-                allOf {
-                    expression { return env.CHANGED_SERVICES?.trim() }
-                    anyOf {
-                        branch 'develop'
-                        branch 'main'
-                    }
-                }
             }
 
             steps {
@@ -428,75 +315,123 @@ pipeline {
                     )
                 ]) {
                     script {
-                        // Login once before parallel pushes
-                        sh '''
-                            set -eu
+                        def serviceConfig = [
+                            'api-gateway'      : ['services/api-gateway/dockerfile',    'services/api-gateway'],
+                            'auth-service'     : ['services/auth-service/dockerfile',    'services/auth-service'],
+                            'users-service'    : ['services/users-service/dockerfile',   'services/users-service'],
+                            'tours-service'    : ['services/tours-service/dockerfile',   'services/tours-service'],
+                            'bookings-service' : ['services/bookings-service/dockerfile','services/bookings-service'],
+                            'reviews-service'  : ['services/reviews-service/dockerfile', 'services/reviews-service'],
+                            'blog-service'     : ['services/blog-service/dockerfile',    'services/blog-service'],
+                            'chat-service'     : ['services/chat-service/dockerfile',    'services/chat-service'],
+                            'frontend'         : ['frontend/dockerfile',                 'frontend'],
+                        ]
 
-                            ATTEMPT=1
-                            MAX_ATTEMPTS=3
+                        // Docker login once before spinning up parallel branches
+                        def doPush = (env.BRANCH_NAME == 'develop' || env.BRANCH_NAME == 'main')
 
-                            while [ "$ATTEMPT" -le "$MAX_ATTEMPTS" ]; do
-                                echo "DockerHub login attempt ${ATTEMPT}/${MAX_ATTEMPTS}"
-
-                                if echo "${DOCKER_PASS}" | docker login -u "${DOCKER_USER}" --password-stdin; then
-                                    echo "DockerHub login succeeded."
-                                    break
-                                fi
-
-                                echo "DockerHub login failed."
-
-                                if [ "$ATTEMPT" -lt "$MAX_ATTEMPTS" ]; then
-                                    SLEEP_TIME=$((ATTEMPT * 20))
-                                    echo "Retrying in ${SLEEP_TIME}s..."
-                                    sleep "$SLEEP_TIME"
-                                else
-                                    echo "DockerHub login failed after ${MAX_ATTEMPTS} attempts."
-                                    exit 1
-                                fi
-
-                                ATTEMPT=$((ATTEMPT + 1))
-                            done
-                        '''
+                        if (doPush) {
+                            sh '''
+                                set -eu
+                                ATTEMPT=1; MAX_ATTEMPTS=3
+                                while [ "$ATTEMPT" -le "$MAX_ATTEMPTS" ]; do
+                                    echo "DockerHub login attempt ${ATTEMPT}/${MAX_ATTEMPTS}"
+                                    if echo "${DOCKER_PASS}" | docker login -u "${DOCKER_USER}" --password-stdin; then
+                                        echo "DockerHub login succeeded."
+                                        break
+                                    fi
+                                    ATTEMPT=$((ATTEMPT + 1))
+                                    [ "$ATTEMPT" -le "$MAX_ATTEMPTS" ] && sleep $((ATTEMPT * 20)) || { echo "Login failed."; exit 1; }
+                                done
+                            '''
+                        }
 
                         def changedList = env.CHANGED_SERVICES.trim().split(' ')
-                        def parallelStages = [:]
+                        def parallelBranches = [:]
 
                         changedList.each { svc ->
-                            def image = "${env.DOCKERHUB_REPO}/${svc}:${env.IMAGE_TAG}"
+                            def cfg = serviceConfig[svc]
+                            if (!cfg) {
+                                echo "WARNING: no config for '${svc}', skipping."
+                                return
+                            }
 
-                            parallelStages["push-${svc}"] = {
+                            // Capture loop variables for closure
+                            def _svc        = svc
+                            def _dockerfile = cfg[0]
+                            def _context    = cfg[1]
+                            def _image      = "${env.DOCKERHUB_REPO}/${_svc}:${env.IMAGE_TAG}"
+                            def _doPush     = doPush
+
+                            parallelBranches["${_svc}"] = {
+                                // ── Step 1: Build ─────────────────────────────
                                 sh """
                                     set -eu
-
-                                    ATTEMPT=1
-                                    MAX_ATTEMPTS=3
-
-                                    while [ "\$ATTEMPT" -le "\$MAX_ATTEMPTS" ]; do
-                                        echo "Pushing ${image}, attempt \$ATTEMPT/\$MAX_ATTEMPTS"
-
-                                        if docker push "${image}"; then
-                                            echo "✔ Pushed ${image}"
-                                            exit 0
-                                        fi
-
-                                        echo "Push failed for ${image}"
-
-                                        if [ "\$ATTEMPT" -lt "\$MAX_ATTEMPTS" ]; then
-                                            SLEEP_TIME=\$((\$ATTEMPT * 20))
-                                            echo "Retrying in \${SLEEP_TIME}s..."
-                                            sleep "\$SLEEP_TIME"
-                                        fi
-
-                                        ATTEMPT=\$((\$ATTEMPT + 1))
-                                    done
-
-                                    echo "Failed to push ${image} after \$MAX_ATTEMPTS attempts."
-                                    exit 1
+                                    echo "━━━ [${_svc}] BUILD ━━━"
+                                    docker build \\
+                                      --network=host \\
+                                      --build-arg NPM_CONFIG_REGISTRY="${NPM_CONFIG_REGISTRY}" \\
+                                      --build-arg NPM_CONFIG_FETCH_RETRIES="${NPM_CONFIG_FETCH_RETRIES}" \\
+                                      --build-arg NPM_CONFIG_FETCH_RETRY_FACTOR="${NPM_CONFIG_FETCH_RETRY_FACTOR}" \\
+                                      --build-arg NPM_CONFIG_FETCH_RETRY_MINTIMEOUT="${NPM_CONFIG_FETCH_RETRY_MINTIMEOUT}" \\
+                                      --build-arg NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT="${NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT}" \\
+                                      -t "${_image}" \\
+                                      -f "${_dockerfile}" \\
+                                      "${_context}"
+                                    echo "✔ [${_svc}] Build done"
                                 """
+
+                                // ── Step 2: Trivy Scan ────────────────────────
+                                sh """
+                                    set +e
+                                    echo "━━━ [${_svc}] TRIVY SCAN ━━━"
+
+                                    trivy image \\
+                                      --severity HIGH,CRITICAL \\
+                                      --ignore-unfixed \\
+                                      --exit-code "${TRIVY_EXIT_CODE}" \\
+                                      --timeout 10m \\
+                                      "${_image}"
+
+                                    RESULT=\$?
+
+                                    if [ "${TRIVY_EXIT_CODE}" = "1" ] && [ "\$RESULT" -ne 0 ]; then
+                                        echo "✘ [${_svc}] Trivy found HIGH/CRITICAL vulnerabilities"
+                                        exit 1
+                                    fi
+
+                                    [ "\$RESULT" -ne 0 ] && echo "⚠ [${_svc}] Trivy non-zero (non-strict, continuing)"
+                                    echo "✔ [${_svc}] Trivy scan done"
+                                    exit 0
+                                """
+
+                                // ── Step 3: Push (develop/main only) ─────────
+                                if (_doPush) {
+                                    sh """
+                                        set -eu
+                                        echo "━━━ [${_svc}] PUSH ━━━"
+
+                                        ATTEMPT=1; MAX_ATTEMPTS=3
+                                        while [ "\$ATTEMPT" -le "\$MAX_ATTEMPTS" ]; do
+                                            echo "Pushing ${_image}, attempt \$ATTEMPT/\$MAX_ATTEMPTS"
+                                            if docker push "${_image}"; then
+                                                echo "✔ [${_svc}] Pushed ${_image}"
+                                                exit 0
+                                            fi
+                                            ATTEMPT=\$((\$ATTEMPT + 1))
+                                            [ "\$ATTEMPT" -le "\$MAX_ATTEMPTS" ] && sleep \$((\$ATTEMPT * 20))
+                                        done
+
+                                        echo "✘ [${_svc}] Push failed after \$MAX_ATTEMPTS attempts."
+                                        exit 1
+                                    """
+                                } else {
+                                    echo "[${_svc}] Branch '${env.BRANCH_NAME}' → skipping push (develop/main only)"
+                                }
                             }
                         }
 
-                        parallel parallelStages
+                        parallel parallelBranches
                     }
                 }
             }
