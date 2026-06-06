@@ -4,6 +4,7 @@ import { Model } from 'mongoose';
 import { ChatMessage, ChatMessageDocument } from './schemas/chat.schema';
 import { CreateChatMessageDto } from './dto/chat.dto';
 import Together from 'together-ai';
+import axios from 'axios';
 
 @Injectable()
 export class ChatService {
@@ -71,17 +72,56 @@ export class ChatService {
   }
 
   async askRasa(message: string, sender: string = 'user') {
-    const rasaUrl = process.env.RASA_URL || 'http://localhost:5005/webhooks/rest/webhook';
+    const rasaServerUrl = process.env.RASA_SERVER_URL || 'http://rasa-server-service:5005';
+    const rasaWebhookUrl = process.env.RASA_WEBHOOK_URL || `${rasaServerUrl}/webhooks/rest/webhook`;
+    
     try {
-      const axios = require('axios');
-      const response = await axios.post(rasaUrl, {
-        sender,
-        message,
+      const response = await axios.post(
+        rasaWebhookUrl,
+        {
+          sender,
+          message,
+        },
+        {
+          timeout: 30000,
+        },
+      );
+
+      const data = response.data;
+      if (!Array.isArray(data)) {
+        console.error('Rasa returned invalid format:', data);
+        return [{ text: 'Lỗi: Bot AI trả về dữ liệu không hợp lệ.' }];
+      }
+
+      if (data.length === 0) {
+        return [{ text: 'Bot AI không có câu trả lời cho bạn lúc này.' }];
+      }
+
+      const normalized = data.map((item: any) => {
+        if (item.text) {
+          return { text: item.text };
+        } else if (item.image) {
+          return { text: `[Hình ảnh] ${item.image}` };
+        } else {
+          return { text: '...' };
+        }
       });
-      return response.data;
+
+      return normalized;
     } catch (error: any) {
-      console.error('Error calling Rasa:', error.message);
-      throw error;
+      const isTimeout = error.code === 'ECONNABORTED';
+      const isConnRefused = error.code === 'ECONNREFUSED';
+      
+      console.error(`[ChatService] askRasa error: ${error.message} - Code: ${error.code}`);
+      
+      if (isTimeout) {
+        throw new Error('Kết nối tới Bot AI bị quá hạn (Timeout 30s).');
+      }
+      if (isConnRefused) {
+        throw new Error('Bot AI hiện đang bảo trì hoặc không thể kết nối.');
+      }
+      
+      throw new Error('Có lỗi xảy ra khi gọi Bot AI.');
     }
   }
 }

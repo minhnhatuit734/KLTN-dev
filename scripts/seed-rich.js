@@ -81,17 +81,18 @@ async function seed() {
   console.log('\n🗺️  Creating tours...');
 
   // High-quality, reliable Unsplash photos for Vietnam travel
+  // High-quality, reliable Unsplash photos for Vietnam travel
   const IMG = {
     halong:   'https://images.unsplash.com/photo-1528360983277-13d401cdc186?w=900&auto=format&fit=crop',
-    phuquoc:  'https://images.unsplash.com/photo-1562602833-0f4ab2fc46e5?w=900&auto=format&fit=crop',
+    phuquoc:  'https://images.unsplash.com/photo-1568819317551-31051b37f69f?w=900&auto=format&fit=crop',
     danang:   'https://images.unsplash.com/photo-1559592413-7cec4d0cae2b?w=900&auto=format&fit=crop',
     hue:      'https://images.unsplash.com/photo-1609743522653-52354461eb27?w=900&auto=format&fit=crop',
     nhatrang: 'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=900&auto=format&fit=crop',
     cantho:   'https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=900&auto=format&fit=crop',
-    sapa:     'https://images.unsplash.com/photo-1583286335622-e77dd55d7e16?w=900&auto=format&fit=crop',
+    sapa:     'https://images.unsplash.com/photo-1557750255-c76072a7aad1?w=900&auto=format&fit=crop',
     dalat:    'https://images.unsplash.com/photo-1544735716-392fe2489ffa?w=900&auto=format&fit=crop',
-    ninhbinh: 'https://images.unsplash.com/photo-1555881286-92c2d8e76af5?w=900&auto=format&fit=crop',
-    hoian:    'https://images.unsplash.com/photo-1580534903527-e00c62dc0d14?w=900&auto=format&fit=crop',
+    ninhbinh: 'https://images.unsplash.com/photo-1528360983277-13d401cdc186?w=900&auto=format&fit=crop',
+    hoian:    'https://images.unsplash.com/photo-1559592413-7cec4d0cae2b?w=900&auto=format&fit=crop',
   };
 
   const toursPayload = [
@@ -240,16 +241,16 @@ async function seed() {
     halong:     'https://images.unsplash.com/photo-1528360983277-13d401cdc186?w=900&auto=format&fit=crop',
     food:       'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=900&auto=format&fit=crop',
     travel:     'https://images.unsplash.com/photo-1469854523086-cc02fe5d8800?w=900&auto=format&fit=crop',
-    phuquoc:    'https://images.unsplash.com/photo-1562602833-0f4ab2fc46e5?w=900&auto=format&fit=crop',
+    phuquoc:    'https://images.unsplash.com/photo-1568819317551-31051b37f69f?w=900&auto=format&fit=crop',
     eco:        'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=900&auto=format&fit=crop',
-    sapa:       'https://images.unsplash.com/photo-1583286335622-e77dd55d7e16?w=900&auto=format&fit=crop',
+    sapa:       'https://images.unsplash.com/photo-1557750255-c76072a7aad1?w=900&auto=format&fit=crop',
     dalat:      'https://images.unsplash.com/photo-1544735716-392fe2489ffa?w=900&auto=format&fit=crop',
     mekong:     'https://images.unsplash.com/photo-1583417319070-4a69db38a482?w=900&auto=format&fit=crop',
     hue:        'https://images.unsplash.com/photo-1609743522653-52354461eb27?w=900&auto=format&fit=crop',
-    hoian:      'https://images.unsplash.com/photo-1580534903527-e00c62dc0d14?w=900&auto=format&fit=crop',
+    hoian:      'https://images.unsplash.com/photo-1559592413-7cec4d0cae2b?w=900&auto=format&fit=crop',
     danang:     'https://images.unsplash.com/photo-1559592413-7cec4d0cae2b?w=900&auto=format&fit=crop',
     nhatrang:   'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=900&auto=format&fit=crop',
-    ninhbinh:   'https://images.unsplash.com/photo-1555881286-92c2d8e76af5?w=900&auto=format&fit=crop',
+    ninhbinh:   'https://images.unsplash.com/photo-1528360983277-13d401cdc186?w=900&auto=format&fit=crop',
     cooking:    'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=900&auto=format&fit=crop',
     budget:     'https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=900&auto=format&fit=crop',
     photo:      'https://images.unsplash.com/photo-1502920917128-1aa500764cbd?w=900&auto=format&fit=crop',
