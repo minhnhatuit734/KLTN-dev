@@ -15,7 +15,7 @@ export class ChatService {
   constructor(
     @InjectModel(ChatMessage.name)
     private chatModel: Model<ChatMessageDocument>,
-  ) {}
+  ) { }
 
   async sendMessage(dto: CreateChatMessageDto) {
     return this.chatModel.create(dto);
@@ -72,9 +72,9 @@ export class ChatService {
   }
 
   async askRasa(message: string, sender: string = 'user') {
-    const rasaServerUrl = process.env.RASA_SERVER_URL || 'http://rasa-server-service:5005';
-    const rasaWebhookUrl = process.env.RASA_WEBHOOK_URL || `${rasaServerUrl}/webhooks/rest/webhook`;
-    
+    const rasaServerUrl = process.env.RASA_SERVER_URL || 'http://localhost:5005';
+    const rasaWebhookUrl = process.env.RASA_WEBHOOK_URL || process.env.RASA_URL || `${rasaServerUrl}/webhooks/rest/webhook`;
+
     try {
       const response = await axios.post(
         rasaWebhookUrl,
@@ -111,16 +111,16 @@ export class ChatService {
     } catch (error: any) {
       const isTimeout = error.code === 'ECONNABORTED';
       const isConnRefused = error.code === 'ECONNREFUSED';
-      
+
       console.error(`[ChatService] askRasa error: ${error.message} - Code: ${error.code}`);
-      
+
       if (isTimeout) {
         throw new Error('Kết nối tới Bot AI bị quá hạn (Timeout 30s).');
       }
       if (isConnRefused) {
         throw new Error('Bot AI hiện đang bảo trì hoặc không thể kết nối.');
       }
-      
+
       throw new Error('Có lỗi xảy ra khi gọi Bot AI.');
     }
   }

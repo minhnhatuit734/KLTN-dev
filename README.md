@@ -396,7 +396,7 @@ Ví dụ:
 MONGO_ATLAS_URI=mongodb+srv://<username>:<password>@<cluster-url>
 JWT_SECRET=your_jwt_secret
 TOGETHER_API_KEY=your_together_api_key
-NEXT_PUBLIC_API_URL=https://api-dev.uittravel.shop
+NEXT_PUBLIC_API_URL=http://localhost:4000
 ```
 
 Lưu ý:
@@ -478,13 +478,13 @@ user3@example.com / 123456
 ### 14.1 Kiểm tra danh sách tour
 
 ```bash
-curl https://api-dev.uittravel.shop/tours
+curl http://localhost:4000/tours
 ```
 
 ### 14.2 Kiểm tra blog
 
 ```bash
-curl https://api-dev.uittravel.shop/blog-post
+curl http://localhost:4000/blog-post
 ```
 
 ### 14.3 Kiểm tra đăng nhập
@@ -493,8 +493,8 @@ curl https://api-dev.uittravel.shop/blog-post
 <<<<<<< HEAD
 curl -X POST http://localhost:4000/auth/login \
 =======
-curl -X POST https://api-dev.uittravel.shop/auth/login \
-curl -X POST https://api-dev.uittravel.shop/auth/login \
+curl -X POST http://localhost:4000/auth/login \
+curl -X POST http://localhost:4000/auth/login \
 ---
 
 ## 15. Kiểm tra trên Kubernetes

@@ -34,7 +34,7 @@ type Review = {
   createdAt?: string;
 };
 
-const BASE = process.env.NEXT_PUBLIC_API_URL || "https://api-dev.uittravel.shop";
+const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 export default function ViewTourClient() {
   const router = useRouter();
