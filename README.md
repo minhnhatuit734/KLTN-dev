@@ -1,4 +1,4 @@
-﻿# TourismWorld Microservices & DevSecOps CI/CD Pipeline
+# TourismWorld Microservices & DevSecOps CI/CD Pipeline
 
 ## 1. Tổng quan dự án
 
@@ -490,11 +490,9 @@ curl https://api-dev.uittravel.shop/blog-post
 ### 14.3 Kiểm tra đăng nhập
 
 ```bash
-<<<<<<< HEAD
-curl -X POST http://localhost:4000/auth/login \
-=======
-curl -X POST https://api-dev.uittravel.shop/auth/login \
-curl -X POST https://api-dev.uittravel.shop/auth/login \
+curl -X POST https://api-dev.uittravel.shop/auth/login
+```
+
 ---
 
 ## 15. Kiểm tra trên Kubernetes
@@ -649,14 +647,6 @@ docker-compose.yml
 sonar-project.properties
 .env.example
 README.md
-<<<<<<< HEAD
-```
-
----
-
-## 19. Repository liên quan
-
-```text
 ```
 
 ---
@@ -686,17 +676,5 @@ https://github.com/ThinhQuang08/Chatbot
 2. Prod có bước Production Approval trước khi update manifest.
 3. Trivy đang ở chế độ report-only vì dependency còn nhiều HIGH/CRITICAL vulnerabilities.
 4. Chatbot Rasa chưa được tích hợp hoàn chỉnh vào hệ thống chính.
-5. Domain, HTTPS và Ingress/ALB sẽ được triển khai ở giai đoạn sau.rce:
-https://github.com/minhnhatuit734/KLTN-dev
-
-Infrastructure as Code:
-https://github.com/minhnhatuit734/kltn-terraform
-
-Kubernetes manifests:
-https://github.com/minhnhatuit734/k8s-manifests
-
-Rasa/MLOps Chatbot:
-https://github.com/ThinhQuang08/Chatbot
+5. Domain, HTTPS và Ingress/ALB sẽ được triển khai ở giai đoạn sau.
 ```
-
----
