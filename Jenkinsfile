@@ -296,6 +296,7 @@ pipeline {
                 }
             }
         }
+        //uittravel
 
         // ── 5. CI: Build → Scan → Push (Parallel, Independent) ────────────────
         // Each service runs its own pipeline independently.
