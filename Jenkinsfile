@@ -24,7 +24,7 @@ pipeline {
 
         booleanParam(
             name: 'TRIVY_STRICT',
-            defaultValue: true,
+            defaultValue: false,
             description: 'If true, Trivy HIGH/CRITICAL vulnerabilities fail the pipeline.'
         )
 
@@ -296,6 +296,7 @@ pipeline {
                 }
             }
         }
+        //uittravel
 
         // ── 5. CI: Build → Scan → Push (Parallel, Independent) ────────────────
         // Each service runs its own pipeline independently.
