@@ -18,13 +18,13 @@ pipeline {
 
         booleanParam(
             name: 'SONAR_NON_BLOCKING',
-            defaultValue: true,
+            defaultValue: false,
             description: 'If true, SonarQube failure marks build UNSTABLE but does not stop build/deploy.'
         )
 
         booleanParam(
             name: 'TRIVY_STRICT',
-            defaultValue: false,
+            defaultValue: true,
             description: 'If true, Trivy HIGH/CRITICAL vulnerabilities fail the pipeline.'
         )
 
@@ -390,7 +390,7 @@ pipeline {
                                             echo "✘ [${_svc}] Trivy found HIGH/CRITICAL vulnerabilities"
                                             exit 1
                                         fi
-                                        [ "\$RESULT" -ne 0 ] && echo "⚠ [${_svc}] Trivy non-zero (non-strict, continuing)" || true
+                                        [ "\$RESULT" -ne 0 ] && echo "⚠ [${_svc}] Trivy non-zero (non-strict, continuing)"
                                         exit 0
                                     """
                                 }
