@@ -64,7 +64,7 @@ pipeline {
 
     // ─────────────────────────────────────────────────────────────────────────
     // Service map: <service-name> → <source folder(s) to watch>
-    // If any file under those folders changes, the service will be rebuilt.
+    // If any file under those folders changes, the service will be rebuilt.zzz
     // ─────────────────────────────────────────────────────────────────────────
 
     stages {
