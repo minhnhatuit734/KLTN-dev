@@ -24,7 +24,7 @@ pipeline {
 
         booleanParam(
             name: 'TRIVY_STRICT',
-            defaultValue: false,
+            defaultValue: true,
             description: 'If true, Trivy HIGH/CRITICAL vulnerabilities fail the pipeline.'
         )
 
